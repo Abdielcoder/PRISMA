@@ -133,50 +133,72 @@ def extract_traditional_format(text):
     """Extrae datos financieros del formato tradicional (columna de datos)"""
     logging.info("Detectado formato tradicional (columna de datos)")
     
-    # Buscar el bloque de prima que contiene los valores financieros
-    prima_pattern = r"Prima neta\s*([\d,]+\.?\d*)\s*Tasa de financiamiento\s*([\d,]+\.?\d*)\s*Gastos por expedición\s*([\d,]+\.?\d*)\s*I\.V\.A\.\s*([\d,]+\.?\d*)\s*Precio total\s*([\d,]+\.?\d*)"
-    prima_match = re.search(prima_pattern, text, re.DOTALL)
+    # Normalizar el texto: reemplazar múltiples espacios y saltos de línea con un solo espacio
+    text = re.sub(r'\s+', ' ', text)
     
-    if prima_match:
-        logging.info("Encontrado bloque de prima en formato tradicional")
-        prima_neta = prima_match.group(1).replace(',', '')
-        tasa_financiamiento = prima_match.group(2).replace(',', '')
-        gastos_expedicion = prima_match.group(3).replace(',', '')
-        iva = prima_match.group(4).replace(',', '')
-        precio_total = prima_match.group(5).replace(',', '')
+    # Buscar el bloque de valores financieros
+    # Primero encontrar las etiquetas
+    labels_pattern = r"Prima neta\s*Tasa de financiamiento\s*Gastos por expedición\s*I\.V\.A\.\s*Precio total"
+    labels_match = re.search(labels_pattern, text, re.IGNORECASE)
+    
+    if labels_match:
+        # Si encontramos las etiquetas, buscar los valores que siguen
+        values_text = text[labels_match.end():]
+        values_pattern = r"\s*([\d,.]+)\s*([\d,.]+)\s*([\d,.]+)\s*([\d,.]+)\s*([\d,.]+)"
+        values_match = re.search(values_pattern, values_text)
         
-        logging.info(f"Valores encontrados: Prima neta={prima_neta}, Tasa={tasa_financiamiento}, "
-                   f"Gastos={gastos_expedicion}, IVA={iva}, Total={precio_total}")
-        
-        return {
-            "Prima neta": prima_neta,
-            "Tasa de financiamiento": tasa_financiamiento,
-            "Gastos por expedición": gastos_expedicion,
-            "I.V.A.": iva,
-            "Precio total": precio_total
-        }
+        if values_match:
+            logging.info("Encontrado bloque de valores financieros")
+            result = {
+                "Prima neta": normalizar_numero(values_match.group(1)),
+                "Tasa de financiamiento": normalizar_numero(values_match.group(2)),
+                "Gastos por expedición": normalizar_numero(values_match.group(3)),
+                "I.V.A.": normalizar_numero(values_match.group(4)),
+                "Precio total": normalizar_numero(values_match.group(5))
+            }
+            
+            # Registrar los valores encontrados
+            for key, value in result.items():
+                logging.info(f"Encontrado {key}: {value}")
+            
+            return result
     
-    # Si no se encuentra el bloque completo, intentar extraer valores individuales
-    logging.info("No se encontró el bloque de prima en formato tradicional, intentando extraer valores individuales")
-    
-    # Patrones individuales para cada valor
-    patterns = {
-        "Prima neta": r"Prima neta\s*([\d,]+\.?\d*)",
-        "Tasa de financiamiento": r"Tasa de financiamiento\s*([\d,]+\.?\d*)",
-        "Gastos por expedición": r"Gastos por expedición\s*([\d,]+\.?\d*)",
-        "I.V.A.": r"I\.V\.A\.\s*([\d,]+\.?\d*)",
-        "Precio total": r"Precio total\s*([\d,]+\.?\d*)"
-    }
-    
+    # Si no se encuentra el bloque completo, intentar buscar valores individuales
+    logging.info("No se encontró el bloque completo, buscando valores individuales")
     result = {}
-    for key, pattern in patterns.items():
-        match = re.search(pattern, text)
-        if match:
-            value = match.group(1).replace(',', '')
+    
+    # Buscar las etiquetas y sus valores correspondientes
+    patterns = [
+        (r"Prima neta\s*([\d,.]+)", "Prima neta"),
+        (r"Tasa de financiamiento\s*([\d,.]+)", "Tasa de financiamiento"),
+        (r"Gastos por expedición\s*([\d,.]+)", "Gastos por expedición"),
+        (r"I\.V\.A\.\s*([\d,.]+)", "I.V.A."),
+        (r"Precio total\s*([\d,.]+)", "Precio total")
+    ]
+    
+    # Buscar cada patrón en el texto
+    for pattern, key in patterns:
+        # Buscar todas las coincidencias
+        matches = list(re.finditer(pattern, text, re.IGNORECASE))
+        if matches:
+            # Tomar el último valor encontrado (suele ser el más relevante)
+            value = normalizar_numero(matches[-1].group(1))
             result[key] = value
             logging.info(f"Encontrado {key}: {value}")
         else:
-            logging.warning(f"No se encontró {key}")
+            # Si no se encuentra, intentar buscar el valor después de la etiqueta
+            label_match = re.search(key, text, re.IGNORECASE)
+            if label_match:
+                # Buscar el siguiente número después de la etiqueta
+                value_match = re.search(r"([\d,.]+)", text[label_match.end():label_match.end()+50])
+                if value_match:
+                    value = normalizar_numero(value_match.group(1))
+                    result[key] = value
+                    logging.info(f"Encontrado {key}: {value}")
+                else:
+                    logging.warning(f"No se encontró valor para {key}")
+            else:
+                logging.warning(f"No se encontró {key}")
     
     return result if result else None
 
