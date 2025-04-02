@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PRISMA - Sistema de Análisis</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&display=swap');
+        
+        body {
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            font-family: 'Roboto Condensed', sans-serif;
+            background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+        }
+        
+        .header {
+            background: linear-gradient(to right, #1a1a1a, #2a2a2a);
+            border-bottom: 2px solid #c0c0c0;
+            padding: 1rem 0;
+            margin-bottom: 2rem;
+        }
+        
+        .header h1 {
+            color: #c0c0c0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            letter-spacing: 2px;
+        }
+        
+        .header h2 {
+            color: #c0c0c0;
+            font-size: 1rem;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+            letter-spacing: 1px;
+            margin-top: 0.5rem;
+        }
+        
+        .container {
+            background-color: rgba(26, 26, 26, 0.95);
+            border: 1px solid #c0c0c0;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+        
+        .drag-area {
+            border: 2px dashed #c0c0c0;
+            transition: all 0.3s ease;
+            background-color: rgba(192, 192, 192, 0.05);
+        }
+        
+        .drag-area.active {
+            border-color: #c0c0c0;
+            background-color: rgba(192, 192, 192, 0.1);
+            box-shadow: 0 0 20px rgba(192, 192, 192, 0.2);
+        }
+        
+        .preview-container {
+            max-height: 800px;
+            overflow-y: auto;
+            background-color: #2a2a2a;
+            border: 1px solid #c0c0c0;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+        }
+        
+        .pdf-content {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
+            margin-top: 1rem;
+        }
+        
+        .pdf-preview-section {
+            background-color: #2a2a2a;
+            border: 1px solid #c0c0c0;
+            border-radius: 4px;
+            padding: 1rem;
+        }
+        
+        .pdf-data-section {
+            background-color: #2a2a2a;
+            border: 1px solid #c0c0c0;
+            border-radius: 4px;
+            padding: 1rem;
+        }
+        
+        .data-item {
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid #c0c0c0;
+        }
+        
+        .data-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        
+        .data-label {
+            color: #c0c0c0;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.5rem;
+        }
+        
+        .data-value {
+            color: #e0e0e0;
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+        
+        .data-verification {
+            display: flex;
+            align-items: center;
+            margin-top: 0.5rem;
+        }
+        
+        .verification-btn {
+            background-color: #2a2a2a;
+            color: #c0c0c0;
+            border: 1px solid #c0c0c0;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .verification-btn:hover {
+            background-color: #c0c0c0;
+            color: #1a1a1a;
+        }
+        
+        .verification-status {
+            margin-left: 1rem;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+        }
+        
+        .verification-status i {
+            margin-right: 0.5rem;
+        }
+        
+        .verification-status.verified {
+            color: #00ff00;
+        }
+        
+        .verification-status.unverified {
+            color: #ff0000;
+        }
+        
+        .verification-status.auto-verified {
+            color: #00ff00;
+        }
+        
+        .financial-data {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+        
+        .financial-card {
+            background-color: #2a2a2a;
+            border: 1px solid #c0c0c0;
+            border-radius: 4px;
+            padding: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+        }
+        
+        .financial-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        
+        .financial-card h3 {
+            color: #c0c0c0;
+            font-size: 0.875rem;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .financial-card p {
+            color: #e0e0e0;
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+        
+        .tab-btn {
+            color: #c0c0c0;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 0.9rem;
+        }
+        
+        .tab-btn:hover {
+            color: #e0e0e0;
+        }
+        
+        .tab-btn.active {
+            border-bottom-color: #c0c0c0;
+            color: #e0e0e0;
+        }
+        
+        .loading-spinner {
+            border: 3px solid #2a2a2a;
+            border-top: 3px solid #c0c0c0;
+        }
+        
+        .section-title {
+            color: #c0c0c0;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #c0c0c0;
+        }
+        
+        .btn {
+            background-color: #2a2a2a;
+            color: #c0c0c0;
+            border: 1px solid #c0c0c0;
+            padding: 0.5rem 1rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.3s ease;
+        }
+        
+        .btn:hover {
+            background-color: #c0c0c0;
+            color: #1a1a1a;
+        }
+        
+        .input-field {
+            background-color: #2a2a2a;
+            border: 1px solid #c0c0c0;
+            color: #e0e0e0;
+            padding: 0.5rem;
+        }
+        
+        .input-field:focus {
+            outline: none;
+            border-color: #c0c0c0;
+            box-shadow: 0 0 0 2px rgba(192, 192, 192, 0.2);
+        }
+
+        .pdf-item {
+            background-color: #2a2a2a;
+            border: 1px solid #c0c0c0;
+            border-radius: 4px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .pdf-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #c0c0c0;
+        }
+
+        .pdf-item-title {
+            color: #c0c0c0;
+            font-size: 0.9rem;
+            font-weight: bold;
+            word-break: break-all;
+            max-width: 80%;
+        }
+
+        .pdf-item-status {
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.875rem;
+        }
+
+        .pdf-item-status.processing {
+            background-color: rgba(192, 192, 192, 0.2);
+            color: #c0c0c0;
+        }
+
+        .pdf-item-status.completed {
+            background-color: rgba(0, 255, 0, 0.2);
+            color: #00ff00;
+        }
+
+        .pdf-item-status.error {
+            background-color: rgba(255, 0, 0, 0.2);
+            color: #ff0000;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            padding: 2rem;
+        }
+
+        .modal-content {
+            width: 100%;
+            height: 100%;
+            background-color: #2a2a2a;
+            padding: 1rem;
+            border-radius: 4px;
+            position: relative;
+            display: grid;
+            grid-template-columns: 3fr 1fr;
+            gap: 1rem;
+        }
+
+        .modal-pdf-container {
+            width: 100%;
+            height: 100%;
+            background: #1a1a1a;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .modal-data-container {
+            background: rgba(42, 42, 42, 0.95);
+            padding: 1rem;
+            border-radius: 4px;
+            border: 1px solid #c0c0c0;
+            overflow-y: auto;
+        }
+
+        .modal-data-title {
+            color: #c0c0c0;
+            font-size: 1.1rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #c0c0c0;
+        }
+
+        .modal-data-item {
+            margin-bottom: 1rem;
+            padding: 0.5rem;
+            background: rgba(26, 26, 26, 0.5);
+            border-radius: 4px;
+        }
+
+        .modal-data-label {
+            color: #c0c0c0;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.25rem;
+        }
+
+        .modal-data-value {
+            color: #e0e0e0;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            color: #c0c0c0;
+            cursor: pointer;
+            font-size: 2rem;
+            z-index: 1001;
+            background-color: rgba(0, 0, 0, 0.5);
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+        }
+
+        .modal-close:hover {
+            color: #e0e0e0;
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <div class="header">
+        <div class="container mx-auto px-4">
+            <h1 class="text-3xl font-bold text-center">PRISMA</h1>
+            <h2 class="text-center">Procesamiento de Recursos de Información Sistemática Mediante Algoritmos</h2>
+        </div>
+    </div>
+    
+    <div class="container mx-auto px-4 py-8">
+        <div class="max-w-4xl mx-auto bg-black/50 backdrop-blur-sm rounded-lg shadow-lg p-6">
+            <!-- Tabs -->
+            <div class="flex mb-6 border-b border-[#c0c0c0]">
+                <button class="tab-btn px-4 py-2 active" data-tab="file">
+                    <i class="fas fa-file-upload mr-2"></i>Cargar Archivos
+                </button>
+                <button class="tab-btn px-4 py-2" data-tab="url">
+                    <i class="fas fa-link mr-2"></i>URL
+                </button>
+            </div>
+
+            <!-- File Upload Tab -->
+            <div class="tab-content" id="file-tab">
+                <div class="drag-area p-8 text-center rounded-lg cursor-pointer">
+                    <i class="fas fa-cloud-upload-alt text-4xl text-[#c0c0c0] mb-4"></i>
+                    <p class="text-[#c0c0c0]">Arrastra y suelta los archivos PDF aquí</p>
+                    <p class="text-sm text-[#c0c0c0]/70 mt-2">O</p>
+                    <input type="file" id="file-input" class="hidden" accept=".pdf" multiple>
+                    <button class="btn mt-4">
+                        Seleccionar Archivos
+                    </button>
+                </div>
+            </div>
+
+            <!-- URL Tab -->
+            <div class="tab-content hidden" id="url-tab">
+                <div class="flex gap-4">
+                    <input type="url" id="url-input" class="input-field flex-1 rounded-lg" 
+                           placeholder="Ingresa la URL del PDF">
+                    <button id="url-submit" class="btn">
+                        Procesar
+                    </button>
+                </div>
+            </div>
+
+            <!-- PDF Items Container -->
+            <div id="pdf-items" class="mt-6">
+                <!-- Los PDFs procesados se mostrarán aquí -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para vista previa en grande -->
+    <div id="preview-modal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <div class="modal-pdf-container">
+                <embed id="modal-preview" type="application/pdf" width="100%" height="100%">
+            </div>
+            <div class="modal-data-container">
+                <h3 class="modal-data-title">Datos Verificados</h3>
+                <div class="modal-data-item">
+                    <div class="modal-data-label">Gastos por Expedición</div>
+                    <div class="modal-data-value" data-field="gastos">$0.00</div>
+                </div>
+                <div class="modal-data-item">
+                    <div class="modal-data-label">IVA</div>
+                    <div class="modal-data-value" data-field="iva">$0.00</div>
+                </div>
+                <div class="modal-data-item">
+                    <div class="modal-data-label">Precio Total</div>
+                    <div class="modal-data-value" data-field="total">$0.00</div>
+                </div>
+                <div class="modal-data-item">
+                    <div class="modal-data-label">Prima Neta</div>
+                    <div class="modal-data-value" data-field="prima">$0.00</div>
+                </div>
+                <div class="modal-data-item">
+                    <div class="modal-data-label">Tasa de Financiamiento</div>
+                    <div class="modal-data-value" data-field="tasa">0.00%</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Tab switching
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        const tabContents = document.querySelectorAll('.tab-content');
+
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tab = btn.dataset.tab;
+                
+                tabBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                tabContents.forEach(content => {
+                    content.classList.add('hidden');
+                    if (content.id === `${tab}-tab`) {
+                        content.classList.remove('hidden');
+                    }
+                });
+            });
+        });
+
+        // File upload handling
+        const dragArea = document.querySelector('.drag-area');
+        const fileInput = document.getElementById('file-input');
+        const pdfItems = document.getElementById('pdf-items');
+        const modal = document.getElementById('preview-modal');
+        const modalPreview = document.getElementById('modal-preview');
+        const modalClose = document.querySelector('.modal-close');
+
+        dragArea.addEventListener('click', () => fileInput.click());
+
+        dragArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dragArea.classList.add('active');
+        });
+
+        dragArea.addEventListener('dragleave', () => {
+            dragArea.classList.remove('active');
+        });
+
+        dragArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dragArea.classList.remove('active');
+            const files = Array.from(e.dataTransfer.files).filter(file => file.type === 'application/pdf');
+            handleFiles(files);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files).filter(file => file.type === 'application/pdf');
+            handleFiles(files);
+        });
+
+        // URL handling
+        document.getElementById('url-submit').addEventListener('click', () => {
+            const url = document.getElementById('url-input').value;
+            if (url) {
+                handleUrlUpload(url);
+            }
+        });
+
+        function createPdfItem(fileName) {
+            const item = document.createElement('div');
+            item.className = 'pdf-item';
+            item.innerHTML = `
+                <div class="pdf-item-header">
+                    <span class="pdf-item-title">${fileName}</span>
+                    <span class="pdf-item-status processing">Procesando...</span>
+                </div>
+                <div class="pdf-content">
+                    <div class="pdf-preview-section">
+                        <h3 class="section-title">Vista Previa del Documento</h3>
+                        <div class="preview-container p-4 rounded-lg">
+                            <img class="mx-auto cursor-pointer" alt="Vista Previa del PDF">
+                        </div>
+                    </div>
+                    <div class="pdf-data-section">
+                        <h3 class="section-title">Datos Financieros</h3>
+                        <div class="data-item">
+                            <div class="data-label">Gastos por Expedición</div>
+                            <div class="data-value">$0.00</div>
+                            <div class="data-verification">
+                                <span class="verification-status unverified">
+                                    <i class="fas fa-times-circle"></i>Sin verificar
+                                </span>
+                            </div>
+                        </div>
+                        <div class="data-item">
+                            <div class="data-label">IVA</div>
+                            <div class="data-value">$0.00</div>
+                            <div class="data-verification">
+                                <span class="verification-status unverified">
+                                    <i class="fas fa-times-circle"></i>Sin verificar
+                                </span>
+                            </div>
+                        </div>
+                        <div class="data-item">
+                            <div class="data-label">Precio Total</div>
+                            <div class="data-value">$0.00</div>
+                            <div class="data-verification">
+                                <span class="verification-status unverified">
+                                    <i class="fas fa-times-circle"></i>Sin verificar
+                                </span>
+                            </div>
+                        </div>
+                        <div class="data-item">
+                            <div class="data-label">Prima Neta</div>
+                            <div class="data-value">$0.00</div>
+                            <div class="data-verification">
+                                <span class="verification-status unverified">
+                                    <i class="fas fa-times-circle"></i>Sin verificar
+                                </span>
+                            </div>
+                        </div>
+                        <div class="data-item">
+                            <div class="data-label">Tasa de Financiamiento</div>
+                            <div class="data-value">0.00%</div>
+                            <div class="data-verification">
+                                <span class="verification-status unverified">
+                                    <i class="fas fa-times-circle"></i>Sin verificar
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            return item;
+        }
+
+        function handleFiles(files) {
+            files.forEach(file => {
+                const pdfItem = createPdfItem(file.name);
+                pdfItems.appendChild(pdfItem);
+                processFile(file, pdfItem);
+            });
+        }
+
+        async function handleUrlUpload(url) {
+            const formData = new FormData();
+            formData.append('url', url);
+            const pdfItem = createPdfItem('PDF desde URL');
+            pdfItems.appendChild(pdfItem);
+            await processUpload(formData, pdfItem);
+        }
+
+        async function processFile(file, pdfItem) {
+            const formData = new FormData();
+            formData.append('file', file);
+            await processUpload(formData, pdfItem);
+        }
+
+        async function processUpload(formData, pdfItem) {
+            const statusElement = pdfItem.querySelector('.pdf-item-status');
+            const previewElement = pdfItem.querySelector('img');
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    if (data.preview) {
+                        // Guardar el PDF base64 como atributo de datos
+                        previewElement.setAttribute('data-pdf', data.pdf_data);
+                        // Mostrar la vista previa como imagen
+                        previewElement.src = `data:image/png;base64,${data.preview}`;
+                    }
+                    
+                    if (data.financial_data) {
+                        displayFinancialData(data.financial_data, pdfItem);
+                        // Guardar los datos financieros como atributo de datos
+                        previewElement.setAttribute('data-financial', JSON.stringify(data.financial_data));
+                    }
+                    
+                    statusElement.textContent = 'Completado';
+                    statusElement.className = 'pdf-item-status completed';
+                } else {
+                    statusElement.textContent = 'Error';
+                    statusElement.className = 'pdf-item-status error';
+                    alert(data.error || 'Error al procesar el documento');
+                }
+            } catch (error) {
+                statusElement.textContent = 'Error';
+                statusElement.className = 'pdf-item-status error';
+                alert('Error al procesar el documento: ' + error.message);
+                console.error(error);
+            }
+        }
+
+        function displayFinancialData(data, container) {
+            const financialData = {
+                'Gastos por Expedición': data['Gastos por expedición'] || '$0.00',
+                'IVA': data['I.V.A.'] || '$0.00',
+                'Precio Total': data['Precio total'] || '$0.00',
+                'Prima Neta': data['Prima neta'] || '$0.00',
+                'Tasa de Financiamiento': data['Tasa de financiamiento'] || '0.00%'
+            };
+
+            container.querySelectorAll('.data-item').forEach(item => {
+                const label = item.querySelector('.data-label').textContent;
+                const valueElement = item.querySelector('.data-value');
+                const statusElement = item.querySelector('.verification-status');
+                
+                if (financialData[label]) {
+                    const value = financialData[label];
+                    valueElement.textContent = value;
+                    
+                    // Verificación automática
+                    if (value !== '$0.00' && value !== '0.00%') {
+                        statusElement.innerHTML = '<i class="fas fa-check-circle"></i>Verificado automáticamente';
+                        statusElement.className = 'verification-status auto-verified';
+                    } else {
+                        statusElement.innerHTML = '<i class="fas fa-times-circle"></i>Sin verificar';
+                        statusElement.className = 'verification-status unverified';
+                    }
+                }
+            });
+
+            // Debug: Mostrar en consola los datos recibidos
+            console.log('Datos financieros recibidos:', data);
+            console.log('Datos financieros procesados:', financialData);
+        }
+
+        // Modal handling
+        document.addEventListener('click', (e) => {
+            if (e.target.tagName === 'IMG' && e.target.closest('.preview-container')) {
+                const img = e.target;
+                const pdfData = img.getAttribute('data-pdf');
+                const financialData = JSON.parse(img.getAttribute('data-financial') || '{}');
+                
+                // Actualizar el visor de PDF
+                const modalPreview = document.getElementById('modal-preview');
+                if (pdfData) {
+                    const pdfUrl = `data:application/pdf;base64,${pdfData}`;
+                    modalPreview.src = pdfUrl;
+                    modalPreview.type = 'application/pdf';
+                }
+                
+                // Actualizar los datos financieros en el modal
+                updateModalFinancialData(financialData);
+                
+                modal.style.display = 'flex';
+            }
+        });
+
+        function updateModalFinancialData(data) {
+            const mappings = {
+                'gastos': 'Gastos por expedición',
+                'iva': 'I.V.A.',
+                'total': 'Precio total',
+                'prima': 'Prima neta',
+                'tasa': 'Tasa de financiamiento'
+            };
+
+            Object.entries(mappings).forEach(([field, key]) => {
+                const element = document.querySelector(`.modal-data-value[data-field="${field}"]`);
+                if (element) {
+                    element.textContent = data[key] || (field === 'tasa' ? '0.00%' : '$0.00');
+                }
+            });
+        }
+
+        modalClose.addEventListener('click', () => {
+            modal.style.display = 'none';
+        });
+
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.style.display = 'none';
+            }
+        });
+
+        // Agregar soporte para zoom y navegación del PDF
+        document.addEventListener('keydown', (e) => {
+            if (modal.style.display === 'flex') {
+                if (e.key === 'Escape') {
+                    modal.style.display = 'none';
+                }
+            }
+        });
+    </script>
+</body>
+</html> 
