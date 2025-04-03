@@ -68,6 +68,7 @@
             grid-template-columns: 2fr 1fr;
             gap: 2rem;
             margin-top: 1rem;
+            position: relative;
         }
         
         .pdf-preview-section {
@@ -82,6 +83,7 @@
             border: 1px solid #c0c0c0;
             border-radius: 4px;
             padding: 1rem;
+            position: relative;
         }
         
         .data-item {
@@ -386,6 +388,178 @@
             color: #e0e0e0;
             background-color: rgba(0, 0, 0, 0.8);
         }
+
+        /* Estilos para el popup de análisis de IA */
+        .analysis-popup {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            backdrop-filter: blur(4px);
+        }
+
+        .analysis-popup-content {
+            text-align: center;
+            color: #e0e0e0;
+        }
+
+        .analysis-popup h3 {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            color: #c0c0c0;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .analysis-popup p {
+            font-size: 1rem;
+            color: #a0a0a0;
+            margin-bottom: 2rem;
+        }
+
+        .ai-animation {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 1.5rem;
+            border-radius: 50%;
+            border: 4px solid transparent;
+            border-top-color: #c0c0c0;
+            animation: spin 1s linear infinite, pulse 2s ease-in-out infinite;
+            position: relative;
+        }
+
+        .ai-animation::before, .ai-animation::after {
+            content: '';
+            position: absolute;
+            border-radius: 50%;
+        }
+
+        .ai-animation::before {
+            top: 5px;
+            left: 5px;
+            right: 5px;
+            bottom: 5px;
+            border: 3px solid transparent;
+            border-right-color: #9f9f9f;
+            animation: spin 1.5s linear infinite reverse;
+        }
+
+        .ai-animation::after {
+            top: 15px;
+            left: 15px;
+            right: 15px;
+            bottom: 15px;
+            border: 3px solid transparent;
+            border-bottom-color: #7f7f7f;
+            animation: spin 1.2s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+        }
+
+        /* Estilos para el mensaje de error (carpeta cerrada) */
+        .error-folder {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.9);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            backdrop-filter: blur(5px);
+        }
+
+        .folder-icon {
+            font-size: 4rem;
+            color: #c0c0c0;
+            margin-bottom: 1rem;
+            opacity: 0.8;
+        }
+
+        .error-stamp {
+            transform: rotate(-15deg);
+            border: 4px solid #ff0000;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1.5rem 0;
+            position: relative;
+            background-color: rgba(255, 0, 0, 0.1);
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.3);
+        }
+
+        .error-stamp h3 {
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: #ff0000;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin: 0;
+            text-align: center;
+        }
+
+        .error-message {
+            font-size: 1rem;
+            color: #a0a0a0;
+            text-align: center;
+            max-width: 80%;
+        }
+        
+        .pdf-external-link {
+            background-color: rgba(59, 130, 246, 0.2);
+            color: rgb(96, 165, 250);
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            margin-top: 1.5rem;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+        
+        .pdf-external-link:hover {
+            background-color: rgba(59, 130, 246, 0.3);
+            color: rgb(147, 197, 253);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .pdf-external-link[target="_blank"] {
+            background-color: rgba(45, 55, 72, 0.3);
+            color: rgb(156, 163, 175);
+            border: 1px solid rgba(75, 85, 99, 0.4);
+        }
+        
+        .pdf-external-link[target="_blank"]:hover {
+            background-color: rgba(45, 55, 72, 0.5);
+            color: rgb(209, 213, 219);
+        }
+        
+        .flex.flex-col.gap-2 {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
     </style>
 </head>
 <body class="min-h-screen">
@@ -553,12 +727,26 @@
                                 <span class="text-white ml-2 document-tipo-endoso">-</span>
                             </div>
                         </div>
-                        <div class="preview-container p-4 rounded-lg">
+                        <div class="preview-container p-4 rounded-lg relative">
+                            <div class="analysis-popup">
+                                <div class="analysis-popup-content">
+                                    <div class="ai-animation"></div>
+                                    <h3>Analizando con IA RINO</h3>
+                                    <p>Procesando documento y extrayendo datos...</p>
+                                </div>
+                            </div>
                             <img class="mx-auto cursor-pointer" alt="Vista Previa del PDF">
                         </div>
                     </div>
                     <div class="pdf-data-section">
                         <h3 class="section-title">Datos Financieros</h3>
+                        <div class="analysis-popup">
+                            <div class="analysis-popup-content">
+                                <div class="ai-animation"></div>
+                                <h3>Analizando con IA RINO</h3>
+                                <p>Extrayendo datos financieros...</p>
+                            </div>
+                        </div>
                         <div class="data-item">
                             <div class="data-label">Gastos por Expedición</div>
                             <div class="data-value">$0.00</div>
@@ -637,6 +825,7 @@
             const previewElement = pdfItem.querySelector('img');
             const ramoElement = pdfItem.querySelector('.document-ramo');
             const tipoEndosoElement = pdfItem.querySelector('.document-tipo-endoso');
+            const analysisPopup = pdfItem.querySelector('.analysis-popup');
 
             try {
                 const response = await fetch('/upload', {
@@ -661,19 +850,190 @@
                         if (tipoEndosoElement) tipoEndosoElement.textContent = data.financial_data.tipo_endoso || 'A - MODIFICACIÓN DE DATOS';
                     }
                     
+                    // Ocultar el popup de análisis
+                    if (analysisPopup) {
+                        analysisPopup.style.display = 'none';
+                    }
+                    
                     statusElement.textContent = 'Completado';
                     statusElement.className = 'pdf-item-status completed';
                 } else {
+                    // Ocultar el popup de análisis en caso de error
+                    if (analysisPopup) {
+                        analysisPopup.style.display = 'none';
+                    }
+                    
+                    // Mostrar el mensaje de carpeta cerrada
+                    showErrorFolder(pdfItem);
+                    
                     statusElement.textContent = 'Error';
                     statusElement.className = 'pdf-item-status error';
-                    alert(data.error || 'Error al procesar el documento');
+                    
+                    // No mostrar alert para no interrumpir la experiencia
+                    console.error(data.error || 'Error al procesar el documento');
                 }
             } catch (error) {
+                // Ocultar el popup de análisis en caso de error
+                if (analysisPopup) {
+                    analysisPopup.style.display = 'none';
+                }
+                
+                // Mostrar el mensaje de carpeta cerrada
+                showErrorFolder(pdfItem);
+                
                 statusElement.textContent = 'Error';
                 statusElement.className = 'pdf-item-status error';
-                alert('Error al procesar el documento: ' + error.message);
-                console.error(error);
+                
+                // No mostrar alert para no interrumpir la experiencia
+                console.error('Error al procesar el documento:', error.message);
             }
+        }
+
+        function showErrorFolder(pdfItem) {
+            // Crear elementos de error para la vista previa y para los datos financieros
+            const previewSection = pdfItem.querySelector('.pdf-preview-section');
+            const dataSection = pdfItem.querySelector('.pdf-data-section');
+            
+            // Obtener el nombre del archivo para construir la URL
+            const fileName = pdfItem.querySelector('.pdf-item-title').textContent;
+            // Asegurar que la URL esté formateada correctamente sin barras duplicadas
+            const pdfUrl = `https://robotsrino.com/files/endosos/AUTOS/AUMENTO/CAMBIO_FORMA_PAGO/${encodeURIComponent(fileName)}`;
+            
+            console.log('URL construida para el documento:', pdfUrl);
+            
+            if (previewSection) {
+                const previewContainer = previewSection.querySelector('.preview-container');
+                
+                // Eliminar popup de análisis si existe
+                const existingAnalysisPopup = previewContainer.querySelector('.analysis-popup');
+                if (existingAnalysisPopup) {
+                    existingAnalysisPopup.remove();
+                }
+                
+                // Crear el elemento de error
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'error-folder';
+                errorDiv.innerHTML = `
+                    <i class="fas fa-folder folder-icon"></i>
+                    <div class="error-stamp">
+                        <h3>Esto no es un endoso de tipo A</h3>
+                    </div>
+                    <p class="error-message">Este documento no puede ser procesado como un endoso de tipo A.</p>
+                    <div class="flex flex-col gap-2 mt-4">
+                        <a href="#" class="pdf-external-link" data-url="${pdfUrl}">
+                            <i class="fas fa-external-link-alt mr-2"></i>
+                            Ver en visor
+                        </a>
+                        <a href="${pdfUrl}" class="pdf-external-link" target="_blank" rel="noopener noreferrer">
+                            <i class="fas fa-file-pdf mr-2"></i>
+                            Abrir en nueva pestaña
+                        </a>
+                    </div>
+                `;
+                
+                previewContainer.appendChild(errorDiv);
+                
+                // Agregar evento al enlace
+                const externalLink = errorDiv.querySelector('.pdf-external-link');
+                if (externalLink) {
+                    externalLink.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        openPdfInPopup(pdfUrl, fileName);
+                    });
+                }
+            }
+            
+            if (dataSection) {
+                // Eliminar popup de análisis si existe
+                const existingAnalysisPopup = dataSection.querySelector('.analysis-popup');
+                if (existingAnalysisPopup) {
+                    existingAnalysisPopup.remove();
+                }
+                
+                // Limpiar contenido actual
+                dataSection.innerHTML = '<h3 class="section-title">Datos Financieros</h3>';
+                
+                // Crear el elemento de error
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'error-folder';
+                errorDiv.innerHTML = `
+                    <i class="fas fa-folder folder-icon"></i>
+                    <div class="error-stamp">
+                        <h3>Esto no es un endoso de tipo A</h3>
+                    </div>
+                    <p class="error-message">No se pueden extraer datos financieros de este documento.</p>
+                    <div class="flex flex-col gap-2 mt-4">
+                        <a href="#" class="pdf-external-link" data-url="${pdfUrl}">
+                            <i class="fas fa-external-link-alt mr-2"></i>
+                            Ver en visor
+                        </a>
+                        <a href="${pdfUrl}" class="pdf-external-link" target="_blank" rel="noopener noreferrer">
+                            <i class="fas fa-file-pdf mr-2"></i>
+                            Abrir en nueva pestaña
+                        </a>
+                    </div>
+                `;
+                
+                dataSection.appendChild(errorDiv);
+                
+                // Agregar evento al enlace
+                const externalLink = errorDiv.querySelector('.pdf-external-link');
+                if (externalLink) {
+                    externalLink.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        openPdfInPopup(pdfUrl, fileName);
+                    });
+                }
+            }
+        }
+
+        // Función para abrir PDF en popup
+        function openPdfInPopup(pdfUrl, fileName) {
+            const modal = document.getElementById('preview-modal');
+            const modalPreview = document.getElementById('modal-preview');
+            
+            // Asegurar que la URL tenga el prefijo https://
+            if (!pdfUrl.startsWith('http')) {
+                console.warn('URL no comienza con http, añadiendo protocolo https://');
+                pdfUrl = 'https://' + pdfUrl.replace(/^\/+/, '');
+            }
+            
+            console.log('Abriendo PDF desde URL:', pdfUrl);
+            
+            // Asignar la URL al visor de PDF
+            modalPreview.src = pdfUrl;
+            modalPreview.type = 'application/pdf';
+            
+            // Actualizar título del modal
+            const modalTitle = document.querySelector('.modal-data-title');
+            if (modalTitle) {
+                modalTitle.textContent = fileName;
+            }
+            
+            // Mostrar mensaje de vista externa
+            const modalData = document.querySelector('.modal-data-container');
+            if (modalData) {
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'modal-data-item mt-4';
+                infoDiv.innerHTML = `
+                    <div class="modal-data-label">Documento externo</div>
+                    <div class="modal-data-value">
+                        <span class="text-yellow-400">
+                            <i class="fas fa-exclamation-triangle mr-2"></i>
+                            Este documento se está cargando desde una fuente externa.
+                        </span>
+                    </div>
+                    <div class="text-xs text-gray-400 mt-2">
+                        URL: ${pdfUrl}
+                    </div>
+                `;
+                
+                // Limpiar contenedor de datos financieros
+                modalData.innerHTML = '';
+                modalData.appendChild(infoDiv);
+            }
+            
+            modal.style.display = 'flex';
         }
 
         function displayFinancialData(data, container) {
@@ -683,8 +1043,22 @@
                 console.error("No se encontró .pdf-data-section dentro del container", container);
                 return; // Salir si no se encuentra el contenedor
             }
+            
             // Limpiar solo el contenedor específico
             financialDataDiv.innerHTML = '<h3 class="section-title">Datos Financieros</h3>'; 
+            
+            // Recrear el popup pero mantenerlo oculto
+            const popupDiv = document.createElement('div');
+            popupDiv.className = 'analysis-popup';
+            popupDiv.style.display = 'none'; // Oculto desde el inicio
+            popupDiv.innerHTML = `
+                <div class="analysis-popup-content">
+                    <div class="ai-animation"></div>
+                    <h3>Analizando con IA RINO</h3>
+                    <p>Extrayendo datos financieros...</p>
+                </div>
+            `;
+            financialDataDiv.appendChild(popupDiv);
 
             // Iterar y crear elementos como antes, pero añadiéndolos a financialDataDiv
             for (const [key, value] of Object.entries(data)) {

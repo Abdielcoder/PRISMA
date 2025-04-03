@@ -342,7 +342,7 @@ def extraer_datos_endoso_a(pdf_path):
                      logging.info(f"Estrategia 4 - Encontrado prima_neta (suma de primas): {prima_neta}")
                  else:
                      logging.warning("Estrategia 4 - Se encontró línea de Prima pero no números.")
-             else:
+        else:
                   logging.warning("Estrategia 4 - No se encontró la sección de primas individuales.")
 
 
