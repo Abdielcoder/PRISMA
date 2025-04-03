@@ -677,37 +677,54 @@
         }
 
         function displayFinancialData(data, container) {
-            const financialData = {
-                'Gastos por Expedición': data['Gastos por expedición'] || '$0.00',
-                'IVA': data['I.V.A.'] || '$0.00',
-                'Precio Total': data['Precio total'] || '$0.00',
-                'Prima Neta': data['Prima neta'] || '$0.00',
-                'Tasa de Financiamiento': data['Tasa de financiamiento'] || '0.00%'
-            };
+            // Encontrar el contenedor específico dentro del pdfItem
+            const financialDataDiv = container.querySelector('.pdf-data-section'); 
+            if (!financialDataDiv) {
+                console.error("No se encontró .pdf-data-section dentro del container", container);
+                return; // Salir si no se encuentra el contenedor
+            }
+            // Limpiar solo el contenedor específico
+            financialDataDiv.innerHTML = '<h3 class="section-title">Datos Financieros</h3>'; 
 
-            container.querySelectorAll('.data-item').forEach(item => {
-                const label = item.querySelector('.data-label').textContent;
-                const valueElement = item.querySelector('.data-value');
-                const statusElement = item.querySelector('.verification-status');
+            // Iterar y crear elementos como antes, pero añadiéndolos a financialDataDiv
+            for (const [key, value] of Object.entries(data)) {
+                // Crear el div para el item financiero
+                const itemDiv = document.createElement('div');
+                itemDiv.classList.add('data-item'); // Usar la clase original para estructura y estilos
                 
-                if (financialData[label]) {
-                    const value = financialData[label];
-                    valueElement.textContent = value;
-                    
-                    // Verificación automática
-                    if (value !== '$0.00' && value !== '0.00%') {
-                        statusElement.innerHTML = '<i class="fas fa-check-circle"></i>Verificado automáticamente';
-                        statusElement.className = 'verification-status auto-verified';
-                    } else {
-                        statusElement.innerHTML = '<i class="fas fa-times-circle"></i>Sin verificar';
-                        statusElement.className = 'verification-status unverified';
-                    }
-                }
-            });
+                let displayValue = 'N/A';
+                let verificationStatusHTML = '<span class="verification-status unverified"><i class="fas fa-times-circle"></i>Sin verificar</span>';
 
-            // Debug: Mostrar en consola los datos recibidos
-            console.log('Datos financieros recibidos:', data);
-            console.log('Datos financieros procesados:', financialData);
+                // Lógica para formatear valor y estado de verificación
+                if (key === "Tasa de financiamiento") {
+                    if (value === null || value === undefined) {
+                        displayValue = 'N/A'; // O mantener "Sin verificar" si se prefiere
+                    } else {
+                        displayValue = parseFloat(value).toFixed(2);
+                        // Si es 0.00, marcar como verificado automáticamente
+                        verificationStatusHTML = '<span class="verification-status auto-verified"><i class="fas fa-check-circle"></i>Verificado automáticamente</span>'; 
+                    }
+                } else if (value !== null && value !== undefined) {
+                     const numericValue = parseFloat(value);
+                     if (!isNaN(numericValue)) {
+                        displayValue = numericValue.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+                        verificationStatusHTML = '<span class="verification-status auto-verified"><i class="fas fa-check-circle"></i>Verificado automáticamente</span>';
+                     } else {
+                        displayValue = 'Valor inválido';
+                     }
+                } // else: displayValue sigue siendo 'N/A', verificationStatusHTML sigue siendo 'Sin verificar'
+
+                // Construir el HTML interno del data-item
+                itemDiv.innerHTML = `
+                    <div class="data-label">${key}</div>
+                    <div class="data-value">${displayValue}</div>
+                    <div class="data-verification">
+                        ${verificationStatusHTML}
+                    </div>
+                `;
+                // Añadir el item al contenedor correcto
+                financialDataDiv.appendChild(itemDiv);
+            }
         }
 
         // Modal handling

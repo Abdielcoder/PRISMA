@@ -135,7 +135,7 @@ def upload_file():
             "Gastos por expedición": datos_financieros.get("gastos_expedicion", 0.0),
             "I.V.A.": datos_financieros.get("iva", 0.0),
             "Precio total": datos_financieros.get("precio_total", 0.0),
-            "Tasa de financiamiento": datos_financieros.get("tasa_financiamiento", 0.0)
+            "Tasa de financiamiento": datos_financieros.get("tasa_financiamiento", None)
         }
         
         return jsonify({

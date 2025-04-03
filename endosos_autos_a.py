@@ -73,6 +73,7 @@ def extraer_desde_texto_crudo(texto_crudo):
     Como fallback, busca etiquetas clave y el valor numérico siguiente.
     """
     prima_neta = None
+    tasa_financiamiento = None
     gastos_expedicion = None
     iva = None
     precio_total = None
@@ -84,7 +85,7 @@ def extraer_desde_texto_crudo(texto_crudo):
         # --- Estrategia 1 (Texto Crudo): Buscar Bloque Vertical Específico --- 
         logging.debug("Texto Crudo - Intentando Estrategia 1: Buscar bloque vertical completo...")
         
-        # --- Reescribir patrón multilínea usando concatenación implícita --- 
+        # --- Modificar patrón para capturar Tasa --- 
         patron_bloque_vertical = (
             r'Prima\s+neta\s*\n'
             r'Tasa\s+de\s+financiamiento\s*\n'
@@ -92,28 +93,31 @@ def extraer_desde_texto_crudo(texto_crudo):
             r'I\.V\.A\.\s*\n'
             r'(?:Precio\s+total|Total\s+a\s+pagar)\s*\n'
             r'\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*\n'  # Prima Neta (Grupo 1)
-            r'\s*(?:\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*\n'  # Tasa (Grupo no capturado)
-            r'\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*\n'  # Gastos Expedición (Grupo 2)
-            r'\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*\n'  # IVA (Grupo 3)
-            r'\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*'   # Precio Total (Grupo 4)
+            r'\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*\n'  # Tasa (Grupo 2) <- Ahora capturado
+            r'\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*\n'  # Gastos Expedición (Grupo 3)
+            r'\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*\n'  # IVA (Grupo 4)
+            r'\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*'   # Precio Total (Grupo 5)
         )
-        # --- Fin de la reescritura ---
+        # --- Fin de la modificación ---
                                
         match_bloque = re.search(patron_bloque_vertical, texto_crudo, re.IGNORECASE | re.MULTILINE)
         
         if match_bloque:
             logging.info("Texto Crudo - Encontrado bloque vertical completo.")
+            # --- Ajustar índices de grupo --- 
             prima_neta = normalizar_numero(match_bloque.group(1))
-            gastos_expedicion = normalizar_numero(match_bloque.group(2))
-            iva = normalizar_numero(match_bloque.group(3))
-            precio_total = normalizar_numero(match_bloque.group(4))
-            logging.info(f"Texto Crudo - Valores del bloque: PN={prima_neta}, GE={gastos_expedicion}, IVA={iva}, PT={precio_total}")
+            tasa_financiamiento = normalizar_numero(match_bloque.group(2)) # Asignar tasa
+            gastos_expedicion = normalizar_numero(match_bloque.group(3))
+            iva = normalizar_numero(match_bloque.group(4))
+            precio_total = normalizar_numero(match_bloque.group(5))
+            # --- Fin ajuste índices --- 
+            logging.info(f"Texto Crudo - Valores del bloque: PN={prima_neta}, TF={tasa_financiamiento}, GE={gastos_expedicion}, IVA={iva}, PT={precio_total}")
         else:
             # --- Inicio del bloque else (Fallback) --- 
             logging.info("Texto Crudo - No se encontró el bloque vertical completo. Intentando Estrategia 2 (búsqueda por etiqueta individual)...")
-            # --- Estrategia 2 (Texto Crudo): Búsqueda por Etiqueta Individual (Fallback) --- 
             campos_a_buscar = {
                 'prima_neta': {'etiqueta': r'Prima\s+neta', 'valor': None},
+                'tasa_financiamiento': {'etiqueta': r'Tasa\s+de\s+financiamiento', 'valor': None},
                 'gastos_expedicion': {'etiqueta': r'Gastos\s+por\s+expedición', 'valor': None},
                 'iva': {'etiqueta': r'I\.V\.A\.', 'valor': None},
                 'precio_total': {'etiqueta': r'Precio\s+total|Total\s+a\s+pagar', 'valor': None}
@@ -153,29 +157,34 @@ def extraer_desde_texto_crudo(texto_crudo):
                     logging.warning(f"Texto Crudo/Fallback - No se encontró la etiqueta para: {campo}")
 
             # Asignar valores encontrados desde el fallback (si no se encontraron con el bloque)
-            prima_neta = campos_a_buscar['prima_neta']['valor']
-            gastos_expedicion = campos_a_buscar['gastos_expedicion']['valor']
-            iva = campos_a_buscar['iva']['valor']
-            precio_total = campos_a_buscar['precio_total']['valor']
-            # --- Fin del bloque else --- 
+            if not prima_neta: prima_neta = campos_a_buscar['prima_neta'].get('valor')
+            if not tasa_financiamiento: tasa_financiamiento = campos_a_buscar['tasa_financiamiento'].get('valor')
+            if not gastos_expedicion: gastos_expedicion = campos_a_buscar['gastos_expedicion'].get('valor')
+            if not iva: iva = campos_a_buscar['iva'].get('valor')
+            if not precio_total: precio_total = campos_a_buscar['precio_total'].get('valor')
 
     except Exception as e:
         logging.error(f"Error procesando texto crudo: {e}", exc_info=True)
         return None
 
-    # Devolver solo si se encontraron todos los valores
-    if all([prima_neta is not None, gastos_expedicion is not None, iva is not None, precio_total is not None]):
-        logging.info("Texto Crudo - Todos los valores extraídos exitosamente.")
+    # --- Modificar verificación y retorno --- 
+    # Ahora verificamos todos los campos EXCEPTO tasa, que es opcional en el sentido
+    # de que solo la estrategia del bloque vertical la extrae actualmente.
+    valores_principales_ok = all([prima_neta is not None, gastos_expedicion is not None, iva is not None, precio_total is not None])
+    
+    if valores_principales_ok:
+        logging.info("Texto Crudo - Valores principales extraídos exitosamente.")
         return {
             'prima_neta': prima_neta,
+            'tasa_financiamiento': tasa_financiamiento, # Incluir tasa (puede ser None)
             'gastos_expedicion': gastos_expedicion,
             'iva': iva,
             'precio_total': precio_total
         }
     else:
-        logging.warning("Texto Crudo - No se lograron extraer todos los valores requeridos.")
+        logging.warning("Texto Crudo - No se lograron extraer todos los valores principales requeridos.")
         return None
-
+    # --- Fin modificación --- 
 
 def extraer_datos_endoso_a(pdf_path):
     """
@@ -197,6 +206,7 @@ def extraer_datos_endoso_a(pdf_path):
         logging.info(f"Formato detectado: {formato}")
             
         prima_neta = None
+        tasa_financiamiento = None
         gastos_expedicion = None
         iva = None
         precio_total = None
@@ -273,6 +283,7 @@ def extraer_datos_endoso_a(pdf_path):
             logging.info("Intentando Estrategia 2: Patrones genéricos...")
             patrones_genericos = {
                  'prima_neta': r'Prima\s+neta[\s\n]*?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\b',
+                 'tasa_financiamiento': r'Tasa\s+de\s+financiamiento[\s\n]*?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\b',
                  'gastos_expedicion': r'Gastos\s+por\s+expedición[\s\n]*?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\b',
                  'iva': r'I\.V\.A\.[\s\n]*?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\b',
                  'precio_total': r'(?:Precio\s+total|Total\s+a\s+pagar)[\s\n]*?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\b'
@@ -287,6 +298,7 @@ def extraer_datos_endoso_a(pdf_path):
 
             # Asignar solo si no se encontraron previamente
             if not prima_neta: prima_neta = datos_temp_gen.get('prima_neta')
+            if not tasa_financiamiento: tasa_financiamiento = datos_temp_gen.get('tasa_financiamiento')
             if not gastos_expedicion: gastos_expedicion = datos_temp_gen.get('gastos_expedicion')
             if not iva: iva = datos_temp_gen.get('iva')
             if not precio_total: precio_total = datos_temp_gen.get('precio_total')
@@ -304,6 +316,7 @@ def extraer_datos_endoso_a(pdf_path):
                     logging.info("Valores encontrados desde texto crudo.")
                     # Asignar solo si no se encontraron previamente
                     if not prima_neta: prima_neta = resultado_crudo.get('prima_neta')
+                    if not tasa_financiamiento: tasa_financiamiento = resultado_crudo.get('tasa_financiamiento') # Obtener TASA
                     if not gastos_expedicion: gastos_expedicion = resultado_crudo.get('gastos_expedicion')
                     if not iva: iva = resultado_crudo.get('iva')
                     if not precio_total: precio_total = resultado_crudo.get('precio_total')
@@ -333,26 +346,31 @@ def extraer_datos_endoso_a(pdf_path):
                   logging.warning("Estrategia 4 - No se encontró la sección de primas individuales.")
 
 
-        # --- Verificación Final ---
-        logging.info(f"Resultados finales de extracción: PN={prima_neta}, GE={gastos_expedicion}, IVA={iva}, PT={precio_total}")
-        if not all([prima_neta is not None, gastos_expedicion is not None, iva is not None, precio_total is not None]):
-            # Log detallado de qué faltó
+        # --- Verificación Final (modificada) --- 
+        logging.info(f"Resultados finales de extracción: PN={prima_neta}, TF={tasa_financiamiento}, GE={gastos_expedicion}, IVA={iva}, PT={precio_total}")
+        # Consideramos la extracción exitosa si tenemos los 4 valores principales.
+        # Tasa de financiamiento es opcional en este punto.
+        valores_principales_ok = all([prima_neta is not None, gastos_expedicion is not None, iva is not None, precio_total is not None])
+
+        if not valores_principales_ok:
+            # Log detallado de qué faltó de los principales
             faltantes = []
             if prima_neta is None: faltantes.append("Prima Neta")
             if gastos_expedicion is None: faltantes.append("Gastos Expedición")
             if iva is None: faltantes.append("IVA")
             if precio_total is None: faltantes.append("Precio Total")
-            logging.error(f"No se encontraron todos los valores requeridos. Faltantes: {', '.join(faltantes)}")
+            logging.error(f"No se encontraron todos los valores principales requeridos. Faltantes: {', '.join(faltantes)}")
             return None
         
-        logging.info("Todos los valores requeridos fueron extraídos.")
+        logging.info("Todos los valores principales requeridos fueron extraídos.")
         return {
             'prima_neta': prima_neta,
+            'tasa_financiamiento': tasa_financiamiento, # Incluir tasa (puede ser None)
             'gastos_expedicion': gastos_expedicion,
             'iva': iva,
             'precio_total': precio_total,
-            'ramo': 'AUTOS', # Asumido como constante para Endoso A
-            'tipo_endoso': 'A - MODIFICACIÓN DE DATOS' # Asumido como constante
+            'ramo': 'AUTOS', 
+            'tipo_endoso': 'A - MODIFICACIÓN DE DATOS'
         }
         
     except Exception as e:
