@@ -6,6 +6,7 @@ import json
 from typing import Dict, Optional
 from endosos_autos_a import extraer_datos_endoso_a
 from data_ia_general_vida import procesar_archivo
+from data_ia_general_vida_individual import procesar_archivo as procesar_archivo_individual
 
 # Configuración de logging
 logging.basicConfig(
@@ -43,11 +44,20 @@ def detect_document_type(text: str) -> str:
         text (str): Texto extraído del PDF
         
     Returns:
-        str: Tipo de documento detectado ('ENDOSO_A', 'POLIZA_VIDA', 'DESCONOCIDO')
+        str: Tipo de documento detectado ('ENDOSO_A', 'POLIZA_VIDA', 'POLIZA_VIDA_INDIVIDUAL', 'DESCONOCIDO')
     """
     # Normalizar el texto
     text = text.lower()
     text = re.sub(r'\s+', ' ', text)
+    
+    # Patrones para identificar póliza de vida individual
+    patrones_vida_individual = [
+        r"vida individual",
+        r"seguro individual",
+        r"p[óo]liza individual",
+        r"vida inteligente",
+        r"seguro de vida individual"
+    ]
     
     # Patrones para identificar póliza de vida
     patrones_vida = [
@@ -71,6 +81,12 @@ def detect_document_type(text: str) -> str:
         r"endoso\s+modificación",
         r"endoso\s+tipo\s+a\s+modificación"
     ]
+    
+    # Buscar patrones de póliza de vida individual
+    for patron in patrones_vida_individual:
+        if re.search(patron, text):
+            logger.info(f"Detectada póliza de vida individual con patrón: {patron}")
+            return "POLIZA_VIDA_INDIVIDUAL"
     
     # Buscar patrones de póliza de vida
     for patron in patrones_vida:
@@ -162,6 +178,37 @@ def validate_endoso(pdf_path: str) -> Dict:
             else:
                 logger.error(f"Se detectó Endoso A para {pdf_path}, pero no se pudieron extraer los datos financieros.")
                 return {"error": "Se detectó Endoso A, pero no se pudieron extraer los datos financieros"}
+        
+        elif tipo_documento == "POLIZA_VIDA_INDIVIDUAL":
+            logger.info(f"Póliza de vida individual detectada para {pdf_path}. Procediendo a extraer datos.")
+            
+            # Crear directorio de salida temporal si no existe
+            output_dir = os.path.join(os.path.dirname(pdf_path), "output")
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Procesar el archivo y obtener datos con el script para pólizas de vida individual
+            datos_vida = procesar_archivo_individual(pdf_path, output_dir)
+            
+            if datos_vida:
+                logger.info(f"Datos de póliza de vida individual extraídos exitosamente para {pdf_path}.")
+                # Convertir los datos a formato financiero esperado por el frontend
+                datos_financieros = {
+                    "prima_neta": datos_vida.get("Prima Neta", "0"),
+                    "gastos_expedicion": "0",  # No aplica para pólizas de vida
+                    "iva": datos_vida.get("I.V.A.", "0"),
+                    "precio_total": datos_vida.get("Prima anual total", "0"),
+                    "tasa_financiamiento": "0"  # No aplica para pólizas de vida
+                }
+                
+                return {
+                    "tipo_documento": "POLIZA_VIDA",  # Usamos el mismo tipo para mantener compatibilidad con el frontend
+                    "descripcion": "PÓLIZA DE VIDA INDIVIDUAL",
+                    "datos_financieros": datos_financieros,
+                    "datos_completos": datos_vida
+                }
+            else:
+                logger.error(f"Se detectó póliza de vida individual para {pdf_path}, pero no se pudieron extraer los datos.")
+                return {"error": "Se detectó póliza de vida individual, pero no se pudieron extraer los datos"}
         
         elif tipo_documento == "POLIZA_VIDA":
             logger.info(f"Póliza de vida detectada para {pdf_path}. Procediendo a extraer datos.")

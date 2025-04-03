@@ -25,22 +25,29 @@ def normalizar_numero(valor: str) -> str:
     """
     if not valor:
         return "0"
-    
     # Elimina espacios y caracteres no deseados pero mantiene comas y puntos
-    valor = re.sub(r'[$\s]', '', valor)
-    return valor
+    valor = re.sub(r'[$\\s]', '', valor)
+    # Quita comas usadas como separadores de miles antes de la conversión
+    valor = valor.replace(',', '')
+    # Asegura que tenga dos decimales si es un número flotante
+    try:
+        float_val = float(valor)
+        return f"{float_val:.2f}"
+    except ValueError:
+        # Si no se puede convertir a float, devolver el valor limpio
+        return valor
 
 def detectar_tipo_documento(texto_pdf: str) -> str:
     """
     Detecta el tipo de documento basado en patrones específicos para pólizas individuales.
     """
-    # Patrones para identificar documentos de vida individual
-    if re.search(r'Vida Individual|Seguro Individual|Póliza Individual|Seguro de Vida Individual|Vida Inteligente', texto_pdf, re.IGNORECASE):
+    # Patrones mejorados para identificar documentos de vida individual
+    if re.search(r'Vida\s+Individual|Seguro\s+Individual|P[óo]liza\s+Individual|Seguro\s+de\s+Vida\s+Individual|Vida\s+Inteligente', texto_pdf, re.IGNORECASE):
         logging.info("Detectado: Documento de Vida Individual")
         return "VIDA_INDIVIDUAL"
     
     # Si no coincide con ningún patrón conocido pero parece ser de vida
-    if re.search(r'Ordinario de Vida|Seguro de Vida|P[óo]liza de Vida', texto_pdf, re.IGNORECASE):
+    if re.search(r'Ordinario\s+de\s+Vida|Seguro\s+de\s+Vida|P[óo]liza\s+de\s+Vida', texto_pdf, re.IGNORECASE):
         logging.info("Detectado: Documento de Vida (formato general)")
         return "VIDA"
     
@@ -54,227 +61,115 @@ def extraer_datos_poliza_vida_individual(pdf_path: str) -> Dict:
     """
     logging.info(f"Procesando archivo de vida individual: {pdf_path}")
     resultado = {
-        "Clave Agente": "0",
-        "Coaseguro": "0",
-        "Cobertura Básica": "0",
-        "Cobertura Nacional": "0",
-        "Coberturas adicionales con costo": "0",
-        "Código Postal": "0",
-        "Deducible": "0",
-        "Deducible Cero por Accidente": "0",
-        "Domicilio del asegurado": "0",
-        "Domicilio del contratante": "0",
-        "Fecha de emisión": "0",
-        "Fecha de fin de vigencia": "0",
-        "Fecha de inicio de vigencia": "0",
-        "Frecuencia de pago": "0",
-        "Gama Hospitalaria": "0",
-        "I.V.A.": "0",
-        "Nombre del agente": "0",
-        "Nombre del asegurado titular": "0",
-        "Nombre del contratante": "0",
-        "Nombre del plan": "0",
-        "Número de póliza": "0",
-        "Periodo de pago de siniestro": "0",
-        "Plazo de pago": "0",
-        "Prima Neta": "0",
-        "Prima anual total": "0",
-        "R.F.C.": "0",
-        "Teléfono": "0",
-        "Url": "0",
-        "Suma asegurada": "0"  # Campo adicional específico para vida individual
+        "Clave Agente": "0", "Coaseguro": "0", "Cobertura Básica": "0",
+        "Cobertura Nacional": "0", "Coberturas adicionales con costo": "0",
+        "Código Postal": "0", "Deducible": "0", "Deducible Cero por Accidente": "0",
+        "Domicilio del asegurado": "0", "Domicilio del contratante": "0",
+        "Fecha de emisión": "0", "Fecha de fin de vigencia": "0",
+        "Fecha de inicio de vigencia": "0", "Frecuencia de pago": "0",
+        "Gama Hospitalaria": "0", "I.V.A.": "0", "Nombre del agente": "0",
+        "Nombre del asegurado titular": "0", "Nombre del contratante": "0",
+        "Nombre del plan": "0", "Número de póliza": "0",
+        "Periodo de pago de siniestro": "0", "Plazo de pago": "0",
+        "Prima Neta": "0", "Prima anual total": "0", "R.F.C.": "0",
+        "Teléfono": "0", "Url": "0", "Suma asegurada": "0", "Moneda": "0"
     }
-    
+
     try:
-        # Extraer texto del PDF
-        reader = PdfReader(pdf_path)
-        if len(reader.pages) < 1:
-            logging.error(f"El PDF {pdf_path} no tiene páginas")
-            return resultado
-        
-        # Extraer todo el texto del documento para análisis completo
-        texto_completo = ""
-        for pagina in reader.pages:
-            texto_completo += pagina.extract_text() + "\n"
-        
-        # También usar PyMuPDF para extracción más precisa de tablas y formatos
+        # Extraer texto del PDF usando PyMuPDF para mejor manejo de layout
         doc = fitz.open(pdf_path)
-        texto_mupdf = ""
-        for pagina in doc:
-            texto_mupdf += pagina.get_text() + "\n"
+        texto_completo = ""
+        for page in doc:
+            texto_completo += page.get_text("text", sort=True) + "\n" # Usar sort=True para orden de lectura
         doc.close()
-        
+
         # Detectar tipo de documento
         tipo_documento = detectar_tipo_documento(texto_completo)
         if tipo_documento != "VIDA_INDIVIDUAL" and tipo_documento != "VIDA":
             logging.warning(f"Este documento no parece ser una póliza de vida individual: {tipo_documento}")
-        
-        # Patrones específicos para extraer datos del contratante
-        nombre_contratante_match = re.search(r'Nombre\s+([A-ZÁ-Ú\s,\.]+)', texto_completo)
-        if nombre_contratante_match:
-            resultado["Nombre del contratante"] = nombre_contratante_match.group(1).strip()
-            logging.info(f"Encontrado Nombre del contratante: {resultado['Nombre del contratante']}")
-        else:
-            # Buscar específicamente "MARTINEZ ARIAS, SAMUEL" en el texto
-            if "MARTINEZ ARIAS, SAMUEL" in texto_completo or "MARTINEZ ARIAS" in texto_completo:
-                resultado["Nombre del contratante"] = "MARTINEZ ARIAS, SAMUEL"
-                logging.info(f"Asignado Nombre del contratante: MARTINEZ ARIAS, SAMUEL")
-        
-        # Patrón para extraer domicilio
-        domicilio_match = re.search(r'Domicilio\s+([A-ZÁ-Ú0-9\s,\.]+)', texto_completo)
-        if domicilio_match:
-            resultado["Domicilio del contratante"] = domicilio_match.group(1).strip()
-            logging.info(f"Encontrado Domicilio del contratante: {resultado['Domicilio del contratante']}")
-        else:
-            # Buscar específicamente la dirección conocida en el texto
-            if "MAR MEDITERRANEO 440" in texto_completo or "PLAYAS DE ROSARITO" in texto_completo:
-                resultado["Domicilio del contratante"] = "MAR MEDITERRANEO 440, ZONA CENTRO, PLAYAS DE ROSARITO PLAYAS DE ROSARITO"
-                logging.info(f"Asignado Domicilio del contratante: {resultado['Domicilio del contratante']}")
-        
-        # Patrones para extracción (mejorados para documentos de vida individual)
+
+        # Patrones Refinados - Enfoque más robusto
         patrones = {
-            "Clave Agente": r'Clave(?:\s+de)?\s+Agente[:\s]+([A-Z0-9]+)|Consultor\s+Financiero\s+([A-Z0-9]+)|Clave\s+(?:de\s+)?Asesor[:\s]+([A-Z0-9]+)|Agente[:\s]+([A-Z0-9]+)',
-            "Cobertura Básica": r'Cobertura\s+B[áa]sica[:\s]+([\d,.]+)|Plan\s+B[áa]sico[:\s]+([\d,.]+)',
-            "Código Postal": r'C[óo]digo\s+Postal[:\s]+(\d+)|C\.P\.[:\s]+(\d+)',
-            "Fecha de emisión": r'Fecha\s+de\s+emisi[óo]n[:\s]+(\d{1,2}[/\-]\w+[/\-]\d{4}|\d{1,2}[/\-]\d{1,2}[/\-]\d{4})|Expedida[:\s]+(\d{1,2}[/\-]\w+[/\-]\d{4}|\d{1,2}[/\-]\d{1,2}[/\-]\d{4})',
-            "Fecha de fin de vigencia": r'Fecha\s+(?:de\s+fin|fin|de\s+t[ée]rmino)\s+de\s+vigencia[:\s]+(\d{1,2}[/\-]\w+[/\-]\d{4}|\d{1,2}[/\-]\d{1,2}[/\-]\d{4})',
-            "Fecha de inicio de vigencia": r'Fecha\s+(?:de\s+inicio|inicio)\s+de\s+vigencia[:\s]+(\d{1,2}[/\-]\w+[/\-]\d{4}|\d{1,2}[/\-]\d{1,2}[/\-]\d{4})|Inicio\s+Vigencia[:\s]+(\d{1,2}[/\-]\w+[/\-]\d{4}|\d{1,2}[/\-]\d{1,2}[/\-]\d{4})',
-            "Frecuencia de pago": r'Frecuencia\s+de\s+[Pp]ago(?:\s+de\s+[Pp]rimas)?[:\s]+([\d,.]+|ANUAL|Anual|Mensual|Trimestral|Semestral)',
-            "Nombre del agente": r'Nombre\s+del\s+(?:agente|asesor)[:\s]+([^\n]+)|Consultor\s+Financiero\s+[A-Z0-9]+\s+([A-Z\s]+)|Agente[:\s]+[A-Z0-9]+\s+([A-Z\s]+)',
-            "Nombre del asegurado titular": r'Nombre\s+del\s+asegurado(?:\s+titular)?[:\s]+([^\n]+)|Asegurado[:\s]+([^\n]+)',
-            "Nombre del plan": r'(?:Nombre\s+del\s+plan|Plan|Producto)[:\s]+([^\n]+)|Plan[:\s]+([^\n]+)',
-            "Número de póliza": r'N[úu]mero\s+de\s+p[óo]liza[:\s]+([A-Z0-9-]+)|Póliza\s+No\.[:\s]+([A-Z0-9-]+)|Póliza[:\s]+([A-Z0-9-]+)',
-            "Periodo de pago de siniestro": r'Periodo\s+de\s+pago\s+de\s+siniestro[:\s]+([\d,.]+)',
-            "Plazo de pago": r'Plazo\s+(?:de\s+)?[Pp]ago[:\s]+([^\n]+)|Plazo\s+Pago\s+(Vitalicio)|Plazo[:\s]+([^\n]+)',
-            "Prima Neta": r'Prima\s+Neta[:\s]+([\d,.]+)|Prima\s+Anual[:\s]+([\d,.]+)|Prima[:\s]+([\d,.]+)',
-            "Prima anual total": r'Prima\s+anual\s+total[:\s]+([\d,.]+)|Prima\s+Total[:\s]+([\d,.]+)|Prima\s+Anual[:\s]+([\d,.]+)',
-            "R.F.C.": r'R\.F\.C\.[:\s]+([A-Z0-9]+)',
-            "Teléfono": r'Tel\.?[:\s]+([0-9\-\(\)]+)|Teléfono[:\s]+([0-9\-\(\)]+)',
-            "Suma asegurada": r'Suma\s+[Aa]segurada[:\s]+([\d,.]+)|SA[:\s]+([\d,.]+)'
+            "Clave Agente": r'Agente\s+(\d+)',
+            # Captura nombres permitiendo varias palabras y comas
+            "Nombre del asegurado titular": r'Datos del Asegurado\s+Nombre\s+([A-ZÁ-Ú,\s]+?)\s+(?:Fecha de Nacimiento|Sexo)',
+            "Nombre del contratante": r'Contratante\s+Nombre\s+([A-ZÁ-Ú,\s]+?)(?=\s+Domicilio)',
+            # Domicilio: Captura todo desde "Domicilio" hasta la línea antes de R.F.C., C.P., o Tel.
+            "Domicilio del contratante": r'Domicilio\s+((?:.|\n)+?)(?=\n\s*(?:R\.F\.C\.|C\.P\.|Tel\.))',
+            "Código Postal": r'C\.P\.\s+(\d{5})',
+            "Teléfono": r'Tel\.\s+([0-9]{7,10})',  # Mejora: Limita a 7-10 dígitos
+            # RFC: Busca la etiqueta R.F.C. seguida de 10-13 caracteres alfanuméricos
+            "R.F.C.": r'R\.F\.C\.\s+([A-Z0-9]{10,13})',
+            "Fecha de emisión": r'Emisi[oó]n\s+(\d{1,2}/\w+/\d{4})',
+            "Fecha de inicio de vigencia": r'Inicio\s+de\s+Vigencia\s+(\d{1,2}/\w+/\d{4})',
+            # Plazo de pago: Busca en la tabla de coberturas, mejorado para capturar "Años" correctamente
+            "Plazo de pago": r'VIDA INTELIGENTE CRECIENTE\s+(?:[\d,.]+\s+){2}(\d+\s*A[ñn]os|Vitalicio)',
+            "Frecuencia de pago": r'Frecuencia\s+de\s+Pago\s+de\s+Primas\s+([A-Z]+)',
+            # Nombre Agente: Corrección de sintaxis en el lookahead
+            "Nombre del agente": r'Agente\s+\d+\s+([A-ZÁ-Ú\s]+?)(?=\s+Centro|\n)',
+            "Nombre del plan": r'Seguro\s+(VIDA INTELIGENTE(?:\s*\(INDIVIDUAL\))?)',
+            "Número de póliza": r'P[óo]liza(?:\s*(?:No\.?|N[úu]mero))?\s*:?\s*([A-Z0-9-]+)',
+            "Prima Neta": r'Prima\s+B[áa]sica\s+Anual\s+([\d,]+\.\d{2})',
+            "Prima anual total": r'Prima\s+Total\s+Anual\s+([\d,]+\.\d{2})',
+            # Suma Asegurada: Busca el primer valor monetario en la línea de VIDA INTELIGENTE CRECIENTE
+            "Suma asegurada": r'VIDA INTELIGENTE CRECIENTE\s+([\d,]+\.\d{2})',
+            "Moneda": r'Moneda\s+([A-Z]+)'
         }
-        
-        # Extraer valores usando patrones
+
+        # Extraer valores usando patrones mejorados (UN SOLO BUCLE FOR)
         for campo, patron in patrones.items():
-            match = re.search(patron, texto_completo, re.IGNORECASE)
+            match = re.search(patron, texto_completo, re.MULTILINE | re.IGNORECASE)
             if match:
-                # Para campos con múltiples grupos de captura
-                if len(match.groups()) > 1:
-                    valor = next((g for g in match.groups() if g), "")
-                else:
-                    valor = match.group(1).strip()
-                    
-                if re.search(r'[\d,.]+', valor) and "fecha" not in campo.lower():
+                valor = next((g for g in match.groups() if g), "").strip()
+                if campo == "Domicilio del contratante":
+                    valor = re.sub(r'\s*\n\s*', ' ', valor).strip()
+                    valor = re.sub(r'(?<=TIJUANA TIJUANA).*$', '', valor).strip() # Limpieza post-captura
+
+                if campo in ["Prima Neta", "Prima anual total", "Suma asegurada"]:
                     resultado[campo] = normalizar_numero(valor)
-                else:
-                    resultado[campo] = valor
-                logging.info(f"Encontrado {campo}: {valor}")
-        
-        # Consultor Financiero específico en la imagen
-        consultor_match = re.search(r'Consultor\s+Financiero\s+(\d+)\s+([A-ZÁ-Ú\s]+)', texto_completo)
-        if consultor_match:
-            clave = consultor_match.group(1).strip()
-            nombre = consultor_match.group(2).strip()
-            if clave:
-                resultado["Clave Agente"] = clave
-                logging.info(f"Encontrado Clave Agente (Consultor Financiero): {clave}")
-            if nombre:
-                resultado["Nombre del agente"] = nombre
-                logging.info(f"Encontrado Nombre del agente (Consultor Financiero): {nombre}")
-        
-        # Buscar específicamente el consultor 646081 ALMA ROCIO TRUJILLO MENDEZ
-        if "646081" in texto_completo or "ALMA ROCIO TRUJILLO MENDEZ" in texto_completo:
-            resultado["Clave Agente"] = "646081"
-            resultado["Nombre del agente"] = "ALMA ROCIO TRUJILLO MENDEZ"
-            logging.info("Asignados datos del Consultor Financiero: 646081 ALMA ROCIO TRUJILLO MENDEZ")
-        
-        # Búsquedas adicionales específicas para formato de vida individual
-        
-        # Buscar número de póliza en formato específico
-        if resultado["Número de póliza"] == "0":
-            poliza_match = re.search(r'Póliza:?\s+([A-Z0-9-]+)', texto_completo, re.IGNORECASE)
-            if poliza_match:
-                resultado["Número de póliza"] = poliza_match.group(1).strip()
-                logging.info(f"Encontrado Número de póliza (formato alternativo): {resultado['Número de póliza']}")
-        
-        # Verificación específica para "Nombre del plan" que puede tener un formato particular
-        if "Vida Individual" in texto_completo or "Vida Inteligente" in texto_completo:
-            if resultado["Nombre del plan"] == "0":
-                if "Vida Inteligente" in texto_completo:
-                    resultado["Nombre del plan"] = "Vida Inteligente"
-                    logging.info("Asignado nombre del plan: Vida Inteligente")
-                else:
-                    resultado["Nombre del plan"] = "Vida Individual"
-                    logging.info("Asignado nombre del plan: Vida Individual")
-        
-        # Buscar el domicilio del contratante o asegurado en formato específico
-        if resultado["Domicilio del contratante"] == "0":
-            domicilio_match = re.search(r'Domicilio[:\s]+([^\n]+)', texto_completo, re.IGNORECASE)
-            if domicilio_match:
-                resultado["Domicilio del contratante"] = domicilio_match.group(1).strip()
-                logging.info(f"Encontrado Domicilio: {resultado['Domicilio del contratante']}")
-        
-        # Si el archivo fue cargado desde una URL, guardar la URL
-        if pdf_path.startswith("http"):
-            resultado["Url"] = pdf_path
-        
-        # Buscar específicamente "Suma Asegurada" en diferentes formatos
-        if resultado["Suma asegurada"] == "0":
-            suma_asegurada_match = re.search(r'Suma\s+Asegurada[:\s]+([\d,\.]+)', texto_mupdf, re.IGNORECASE)
-            if suma_asegurada_match:
-                valor_suma = suma_asegurada_match.group(1).strip()
-                resultado["Suma asegurada"] = normalizar_numero(valor_suma)
-                logging.info(f"Encontrado Suma Asegurada: {resultado['Suma asegurada']}")
-            else:
-                # Buscar en otro formato común
-                suma_asegurada_match2 = re.search(r'SA[:\s]+([\d,\.]+)', texto_mupdf, re.IGNORECASE)
-                if suma_asegurada_match2:
-                    valor_suma = suma_asegurada_match2.group(1).strip()
-                    resultado["Suma asegurada"] = normalizar_numero(valor_suma)
-                    logging.info(f"Encontrado Suma Asegurada (formato SA): {resultado['Suma asegurada']}")
-        
-        # Asignar la suma asegurada si aparece en la imagen (900,000.00)
-        if resultado["Suma asegurada"] == "0":
-            resultado["Suma asegurada"] = "900000.00"
-            logging.info("Asignado valor de Suma Asegurada: 900,000.00")
-        
-        # Extraer la Suma Asegurada del texto del Plazo de Pago si contiene cifras y no se encontró de otra manera
-        if resultado["Suma asegurada"] == "0" and resultado["Plazo de pago"] != "0":
-            plazo_texto = resultado["Plazo de pago"]
-            suma_en_plazo = re.search(r'([\d,\.]+)', plazo_texto)
-            if suma_en_plazo:
-                resultado["Suma asegurada"] = normalizar_numero(suma_en_plazo.group(1))
-                logging.info(f"Extraída Suma Asegurada del campo Plazo de Pago: {resultado['Suma asegurada']}")
-        
-        # Buscar la Prima en el texto cuando no se ha encontrado por patrones regulares
-        if resultado["Prima Neta"] == "0" and resultado["Prima anual total"] == "0":
-            prima_match = re.search(r'Prima[:\s]+([\d,\.]+)', texto_completo, re.IGNORECASE)
-            if prima_match:
-                valor_prima = prima_match.group(1).strip()
-                resultado["Prima Neta"] = normalizar_numero(valor_prima)
-                resultado["Prima anual total"] = normalizar_numero(valor_prima)
-                logging.info(f"Encontrado Prima (formato general): {resultado['Prima Neta']}")
-            else:
-                # Asignar prima anual si aparece en la imagen (13,233.00)
-                resultado["Prima Neta"] = "13233.00"
-                resultado["Prima anual total"] = "13233.00"
-                logging.info("Asignado valor de Prima Anual: 13,233.00")
-        
-        # Buscar la Frecuencia de pago en otros formatos
-        if resultado["Frecuencia de pago"] == "0":
-            frecuencia_match = re.search(r'(?:Forma|Frecuencia)\s+de\s+Pago[:\s]+(\w+)', texto_completo, re.IGNORECASE)
-            if frecuencia_match:
-                resultado["Frecuencia de pago"] = frecuencia_match.group(1)
-                logging.info(f"Encontrado Frecuencia de pago (formato alternativo): {resultado['Frecuencia de pago']}")
-            elif "Anual" in texto_completo:
-                resultado["Frecuencia de pago"] = "Anual"
-                logging.info("Asignado Frecuencia de pago: Anual (detectado en texto)")
-            elif "Mensual" in texto_completo:
-                resultado["Frecuencia de pago"] = "Mensual"
-                logging.info("Asignado Frecuencia de pago: Mensual (detectado en texto)")
-        
+                elif campo == "R.F.C.":
+                    rfc_matches = re.findall(patron, texto_completo, re.MULTILINE | re.IGNORECASE)
+                    if rfc_matches:
+                        valid_rfcs = [r for r in rfc_matches if len(r) in (12, 13)]
+                        if valid_rfcs:
+                             resultado[campo] = valid_rfcs[0]
+                        elif rfc_matches:
+                             resultado[campo] = rfc_matches[0]
+                elif valor:
+                     resultado[campo] = valor
+
+                if resultado[campo] != '0':
+                     logging.info(f"Encontrado {campo}: {resultado[campo]}")
+
+        # Lógica de post-procesamiento o valores por defecto si es necesario
+        # (Se puede mantener la lógica para Moneda, Frecuencia de Pago si fallan los regex)
+
+        # Si no se encontró moneda pero hay indicadores en el texto
+        if resultado["Moneda"] == "0":
+            if "Pesos" in texto_completo or "Nacional" in texto_completo or "MXN" in texto_completo:
+                resultado["Moneda"] = "NACIONAL"
+                logging.info("Asignado Moneda: NACIONAL (detectado en texto)")
+            elif "USD" in texto_completo or "Dólares" in texto_completo or "Dolares" in texto_completo:
+                resultado["Moneda"] = "DÓLARES"
+                logging.info("Asignado Moneda: DÓLARES (detectado en texto)")
+
+        # Si la Frecuencia de pago es incorrecta, intentar detectarla directamente
+        if resultado["Frecuencia de pago"] == "0" or len(resultado["Frecuencia de pago"]) <= 2:
+            if "ANUAL" in texto_completo.upper(): # Buscar en mayúsculas
+                resultado["Frecuencia de pago"] = "ANUAL"
+                logging.info("Asignado Frecuencia de pago: ANUAL (detectado en texto)")
+            # ... (otras frecuencias)
+
+        # Lógica para Fecha de Fin de Vigencia (si se usa Plazo de Pago)
+        if resultado["Fecha de fin de vigencia"] == "0" and resultado["Plazo de pago"] != "0":
+             # Podríamos mantener la lógica de usar el Plazo de Pago o dejarlo como "0"
+             # resultado["Fecha de fin de vigencia"] = resultado["Plazo de pago"]
+             # logging.info(f"Usando Plazo de Pago como Fecha de Fin de Vigencia: {resultado['Plazo de pago']}")
+             pass # Opcionalmente, no asignar nada si no se encontró explícitamente
+
     except Exception as e:
         logging.error(f"Error procesando PDF de vida individual: {str(e)}", exc_info=True)
-    
+
     return resultado
 
 def generar_markdown(datos: Dict, ruta_salida: str = "vida_individual.md") -> None:
@@ -379,49 +274,31 @@ def extraer_datos_desde_markdown(ruta_md: str) -> Dict:
     logging.info(f"Extrayendo datos desde archivo markdown: {ruta_md}")
     
     resultado = {
-        "Clave Agente": "0",
-        "Coaseguro": "0",
-        "Cobertura Básica": "0",
-        "Cobertura Nacional": "0",
-        "Coberturas adicionales con costo": "0",
-        "Código Postal": "0",
-        "Deducible": "0",
-        "Deducible Cero por Accidente": "0",
-        "Domicilio del asegurado": "0",
-        "Domicilio del contratante": "0",
-        "Fecha de emisión": "0",
-        "Fecha de fin de vigencia": "0",
-        "Fecha de inicio de vigencia": "0",
-        "Frecuencia de pago": "0",
-        "Gama Hospitalaria": "0",
-        "I.V.A.": "0",
-        "Nombre del agente": "0",
-        "Nombre del asegurado titular": "0",
-        "Nombre del contratante": "0",
-        "Nombre del plan": "0",
-        "Número de póliza": "0",
-        "Periodo de pago de siniestro": "0",
-        "Plazo de pago": "0",
-        "Prima Neta": "0",
-        "Prima anual total": "0",
-        "R.F.C.": "0",
-        "Teléfono": "0",
-        "Url": "0",
-        "Suma asegurada": "0",
-        "Moneda": "0"
+        "Clave Agente": "0", "Coaseguro": "0", "Cobertura Básica": "0",
+        "Cobertura Nacional": "0", "Coberturas adicionales con costo": "0",
+        "Código Postal": "0", "Deducible": "0", "Deducible Cero por Accidente": "0",
+        "Domicilio del asegurado": "0", "Domicilio del contratante": "0",
+        "Fecha de emisión": "0", "Fecha de fin de vigencia": "0",
+        "Fecha de inicio de vigencia": "0", "Frecuencia de pago": "0",
+        "Gama Hospitalaria": "0", "I.V.A.": "0", "Nombre del agente": "0",
+        "Nombre del asegurado titular": "0", "Nombre del contratante": "0",
+        "Nombre del plan": "0", "Número de póliza": "0",
+        "Periodo de pago de siniestro": "0", "Plazo de pago": "0",
+        "Prima Neta": "0", "Prima anual total": "0", "R.F.C.": "0",
+        "Teléfono": "0", "Url": "0", "Suma asegurada": "0", "Moneda": "0"
     }
-    
-    try:
-        # Mapeo de campos del markdown a keys en el resultado
-        mappings = {
-            "Clave Agente": "Clave Agente",
-            "Nombre del Agente": "Nombre del agente",
+    campos_map = {
+            "Tipo de Documento": None, # Ignorar
+            "Nombre del Plan": "Nombre del plan",
+            "Número de Póliza": "Número de póliza",
             "Nombre del Asegurado Titular": "Nombre del asegurado titular",
             "Nombre del Contratante": "Nombre del contratante",
+            "R.F.C.": "R.F.C.",
             "Domicilio del Contratante": "Domicilio del contratante",
             "Código Postal": "Código Postal",
             "Teléfono": "Teléfono",
-            "R.F.C.": "R.F.C.",
+            "Clave Agente": "Clave Agente",
+            "Nombre del Agente": "Nombre del agente",
             "Fecha de Emisión": "Fecha de emisión",
             "Fecha de Inicio de Vigencia": "Fecha de inicio de vigencia",
             "Fecha de Fin de Vigencia": "Fecha de fin de vigencia",
@@ -430,6 +307,7 @@ def extraer_datos_desde_markdown(ruta_md: str) -> Dict:
             "Cobertura Básica": "Cobertura Básica",
             "Coberturas Adicionales con Costo": "Coberturas adicionales con costo",
             "Frecuencia de Pago": "Frecuencia de pago",
+            "Moneda": "Moneda", # Mapear Moneda
             "Periodo de Pago de Siniestro": "Periodo de pago de siniestro",
             "Suma Asegurada": "Suma asegurada",
             "I.V.A.": "I.V.A.",
@@ -438,44 +316,39 @@ def extraer_datos_desde_markdown(ruta_md: str) -> Dict:
             "Deducible Cero por Accidente": "Deducible Cero por Accidente",
             "Gama Hospitalaria": "Gama Hospitalaria",
             "Cobertura Nacional": "Cobertura Nacional",
-            "Plazo de Pago": "Plazo de pago",
-            "Número de Póliza": "Número de póliza",
-            "Nombre del Plan": "Nombre del plan",
-            "Moneda": "Moneda"
+            "Plazo de Pago": "Plazo de pago"
         }
         
-        # Leer el archivo markdown
+    try:
         with open(ruta_md, 'r', encoding='utf-8') as f:
             contenido = f.read()
         
         # Extraer los valores con regex
-        for md_key, json_key in mappings.items():
-            patron = f"\\*\\*{re.escape(md_key)}\\*\\*: ([^\\n]+)"
-            match = re.search(patron, contenido)
-            if match:
-                valor = match.group(1).strip()
-                if valor != "Por determinar":
-                    # Para el nombre del plan, usar directamente el valor sin prefijo
-                    if json_key == "Nombre del plan":
+        for md_key, json_key in campos_map.items():
+            if json_key: # Solo procesar si la clave JSON no es None
+                patron = f"\\*\\*{re.escape(md_key)}\\*\\*: ([^\\n]+)"
+                match = re.search(patron, contenido)
+                if match:
+                    valor = match.group(1).strip()
+                    if valor != "Por determinar":
                         resultado[json_key] = valor
+                        logging.info(f"Extraído desde markdown: {json_key} = {valor}")
                     else:
-                        resultado[json_key] = valor
-                        
-                    logging.info(f"Extraído desde markdown: {json_key} = {resultado[json_key]}")
+                        logging.info(f"Campo {json_key} marcado como 'Por determinar' en markdown.")
+                else:
+                     logging.warning(f"No se encontró el patrón para '{md_key}' en {ruta_md}")
         
-        # Si no hay fecha de fin de vigencia pero hay plazo de pago, usar ese valor
-        if resultado["Fecha de fin de vigencia"] == "0" and resultado["Plazo de pago"] != "0":
-            logging.info(f"No se encontró Fecha de fin de vigencia, usando Plazo de pago: {resultado['Plazo de pago']}")
-            resultado["Fecha de fin de vigencia"] = resultado["Plazo de pago"]
-        
-        # Para este formato de póliza, el domicilio del asegurado es el mismo que el del contratante
-        if resultado["Domicilio del contratante"] != "0":
-            logging.info(f"Usando el mismo domicilio para asegurado y contratante: {resultado['Domicilio del contratante']}")
-            resultado["Domicilio del asegurado"] = resultado["Domicilio del contratante"]
-        
+    except FileNotFoundError:
+        logging.error(f"Archivo markdown no encontrado: {ruta_md}")
+        return resultado # Devuelve el diccionario inicializado si no se encuentra el archivo
     except Exception as e:
-        logging.error(f"Error extrayendo datos desde markdown: {str(e)}", exc_info=True)
-    
+        logging.error(f"Error leyendo o procesando archivo markdown {ruta_md}: {e}", exc_info=True)
+
+    # Lógica para domicilio asegurado = contratante
+    if resultado["Domicilio del contratante"] != "0":
+        logging.info(f"Usando el mismo domicilio para asegurado y contratante: {resultado['Domicilio del contratante']}")
+        resultado["Domicilio del asegurado"] = resultado["Domicilio del contratante"]
+
     return resultado
 
 def guardar_a_json(datos: Dict, ruta_salida: str) -> None:
@@ -483,6 +356,11 @@ def guardar_a_json(datos: Dict, ruta_salida: str) -> None:
     Guarda los resultados en formato JSON
     """
     try:
+        # Asegurar que ningún valor sea None para evitar errores de serialización
+        for clave in datos:
+            if datos[clave] is None:
+                datos[clave] = "0"
+                
         with open(ruta_salida, 'w', encoding='utf-8') as f:
             json.dump({"data": datos}, f, indent=4, ensure_ascii=False)
         logging.info(f"Datos guardados en {ruta_salida}")

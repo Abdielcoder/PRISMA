@@ -146,29 +146,56 @@ def upload_file():
             "file_name": file_name,
             "preview": preview,
             "pdf_data": pdf_data,
-            "financial_data": datos_formateados,
+            "financial_data": datos_formateados, # Inicialmente con datos formateados estándar
             "document_type": resultado.get("tipo_documento", "DESCONOCIDO"),
             "description": resultado.get("descripcion", "")
         }
         
-        # Para pólizas de vida, añadir datos completos
+        # Para pólizas de vida (tanto regular como individual), añadir datos completos
         if resultado.get("tipo_documento") == "POLIZA_VIDA" and "datos_completos" in resultado:
             # Enviar todos los datos completos de la póliza, sin filtrar
             respuesta["poliza_data"] = resultado["datos_completos"]
             
-            # Asegurar que los datos financieros incluyan los valores de Prima Neta y Prima anual total
+            # Registramos el formato específico para debugging
+            logger.info(f"Descripción de póliza: {resultado.get('descripcion', 'No hay descripción')}")
+            
+            # Obtener datos de la póliza extraída
             datos_poliza = resultado["datos_completos"]
-            datos_formateados["Prima neta"] = datos_poliza.get("Prima Neta", "0")
-            datos_formateados["Precio total"] = datos_poliza.get("Prima anual total", "0")
+            
+            # Reconstruir 'datos_formateados' específicamente para pólizas de vida
+            # Usando los valores de datos_poliza y asegurando que sean strings.
+            datos_formateados_vida = { # Usar un nombre diferente temporalmente para evitar confusión
+                "Prima neta": datos_poliza.get("Prima Neta", "0.00"),
+                # Usar '0.00' como default para Gastos e IVA si no vienen de datos_financieros iniciales
+                "Gastos por expedición": datos_financieros.get("gastos_expedicion", "0.00"), 
+                "I.V.A.": datos_poliza.get("I.V.A.", "0.00"),
+                "Precio total": datos_poliza.get("Prima anual total", "0.00"),
+                # Usar '0.00' también para Tasa en pólizas de vida
+                "Tasa de financiamiento": datos_financieros.get("tasa_financiamiento", "0.00") 
+            }
+            
+            # Asegurarse de que los valores '0' sean '0.00'
+            for key in ["Prima neta", "Gastos por expedición", "I.V.A.", "Precio total", "Tasa de financiamiento"]:
+                if datos_formateados_vida[key] == "0":
+                    datos_formateados_vida[key] = "0.00"
+            
+            # Actualizar la respuesta con los datos formateados específicamente para vida
+            respuesta["financial_data"] = datos_formateados_vida # Actualizar el campo en respuesta
             
             # Registrar los valores para depuración
-            logger.info(f"Enviando Prima Neta: {datos_poliza.get('Prima Neta', '0')}")
-            logger.info(f"Enviando Prima anual total: {datos_poliza.get('Prima anual total', '0')}")
+            logger.info(f"Enviando Prima Neta (en financial_data): {respuesta['financial_data']['Prima neta']}")
+            logger.info(f"Enviando Prima anual total (en financial_data): {respuesta['financial_data']['Precio total']}")
+            logger.info(f"Enviando datos completos de póliza en poliza_data.")
         
+        # El resto de la respuesta ya tiene financial_data (actualizado si es póliza) y poliza_data (si aplica)
+        # >>> Log detallado de la respuesta ANTES de jsonify <<<
+        logger.debug(f"Respuesta a jsonify: {respuesta}") 
         return jsonify(respuesta)
         
     except Exception as e:
         logger.error(f"Error en upload_file: {str(e)}")
+        # Log detallado del error
+        logger.exception("Detalle del error en upload_file:") 
         return jsonify({"error": str(e)}), 500
 
 @app.route('/pdf_preview/<path:filename>')
