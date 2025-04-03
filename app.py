@@ -29,6 +29,8 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max-limit
 
 # Asegurarse de que existe el directorio de uploads
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+# Asegurarse de que existe el directorio de output para datos de procesamiento
+os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], 'output'), exist_ok=True)
 
 def download_pdf(url):
     """Descarga un PDF desde una URL y lo guarda temporalmente."""
@@ -114,7 +116,7 @@ def upload_file():
                 return jsonify({"error": "No se pudo descargar el PDF"}), 400
             file_name = os.path.basename(url)
         
-        # Validar y procesar el endoso
+        # Validar y procesar el documento
         resultado = validate_endoso(file_path)
         
         if "error" in resultado:
@@ -138,13 +140,32 @@ def upload_file():
             "Tasa de financiamiento": datos_financieros.get("tasa_financiamiento", None)
         }
         
-        return jsonify({
+        # Preparar la respuesta base
+        respuesta = {
             "message": "Archivo procesado correctamente",
             "file_name": file_name,
             "preview": preview,
             "pdf_data": pdf_data,
-            "financial_data": datos_formateados
-        })
+            "financial_data": datos_formateados,
+            "document_type": resultado.get("tipo_documento", "DESCONOCIDO"),
+            "description": resultado.get("descripcion", "")
+        }
+        
+        # Para pólizas de vida, añadir datos completos
+        if resultado.get("tipo_documento") == "POLIZA_VIDA" and "datos_completos" in resultado:
+            # Enviar todos los datos completos de la póliza, sin filtrar
+            respuesta["poliza_data"] = resultado["datos_completos"]
+            
+            # Asegurar que los datos financieros incluyan los valores de Prima Neta y Prima anual total
+            datos_poliza = resultado["datos_completos"]
+            datos_formateados["Prima neta"] = datos_poliza.get("Prima Neta", "0")
+            datos_formateados["Precio total"] = datos_poliza.get("Prima anual total", "0")
+            
+            # Registrar los valores para depuración
+            logger.info(f"Enviando Prima Neta: {datos_poliza.get('Prima Neta', '0')}")
+            logger.info(f"Enviando Prima anual total: {datos_poliza.get('Prima anual total', '0')}")
+        
+        return jsonify(respuesta)
         
     except Exception as e:
         logger.error(f"Error en upload_file: {str(e)}")

@@ -335,6 +335,7 @@
             border-radius: 4px;
             border: 1px solid #c0c0c0;
             overflow-y: auto;
+            max-height: 100%;
         }
 
         .modal-data-title {
@@ -344,13 +345,22 @@
             margin-bottom: 1rem;
             padding-bottom: 0.5rem;
             border-bottom: 1px solid #c0c0c0;
+            position: sticky;
+            top: 0;
+            background: rgba(42, 42, 42, 0.95);
+            z-index: 10;
         }
 
         .modal-data-item {
-            margin-bottom: 1rem;
+            margin-bottom: 0.75rem;
             padding: 0.5rem;
             background: rgba(26, 26, 26, 0.5);
             border-radius: 4px;
+            transition: all 0.3s ease;
+        }
+
+        .modal-data-item:hover {
+            background: rgba(26, 26, 26, 0.8);
         }
 
         .modal-data-label {
@@ -723,7 +733,7 @@
                                 <span class="text-white ml-2 document-ramo">-</span>
                             </div>
                             <div class="info-item">
-                                <span class="text-gray-400">Tipo de Endoso:</span>
+                                <span class="text-gray-400">Tipo de Documento:</span>
                                 <span class="text-white ml-2 document-tipo-endoso">-</span>
                             </div>
                         </div>
@@ -836,18 +846,41 @@
                 const data = await response.json();
 
                 if (response.ok) {
+                    console.log("Respuesta de servidor:", data);
+                    
                     if (data.preview) {
                         previewElement.setAttribute('data-pdf', data.pdf_data);
                         previewElement.src = `data:image/png;base64,${data.preview}`;
                     }
                     
                     if (data.financial_data) {
-                        displayFinancialData(data.financial_data, pdfItem);
-                        previewElement.setAttribute('data-financial', JSON.stringify(data.financial_data));
+                        console.log("Datos financieros recibidos:", data.financial_data);
+                        console.log("Tipo de documento:", data.document_type);
                         
-                        // Actualizar información del documento
-                        if (ramoElement) ramoElement.textContent = data.financial_data.ramo || 'AUTOS';
-                        if (tipoEndosoElement) tipoEndosoElement.textContent = data.financial_data.tipo_endoso || 'A - MODIFICACIÓN DE DATOS';
+                        if (data.document_type === "POLIZA_VIDA" && data.poliza_data) {
+                            console.log("Datos de póliza recibidos:", data.poliza_data);
+                            console.log("Prima Neta recibida:", data.poliza_data["Prima Neta"]);
+                            console.log("Prima anual total recibida:", data.poliza_data["Prima anual total"]);
+                            
+                            // Guardar los datos de la póliza en el elemento pdfItem
+                            pdfItem.setAttribute('data-poliza-data', JSON.stringify(data.poliza_data));
+                            
+                            // Mostrar todos los datos de la póliza en lugar de los financieros
+                            displayPolizaVidaData(data.poliza_data, pdfItem, true);
+                            previewElement.setAttribute('data-financial', JSON.stringify(data.financial_data));
+                            
+                            // Actualizar información del documento
+                            if (ramoElement) ramoElement.textContent = "VIDA";
+                            if (tipoEndosoElement) tipoEndosoElement.textContent = "PÓLIZA DE VIDA";
+                        } else {
+                            // Para endosos tipo A, mostrar datos financieros normalmente
+                            displayFinancialData(data.financial_data, pdfItem);
+                            previewElement.setAttribute('data-financial', JSON.stringify(data.financial_data));
+                            
+                            // Actualizar información del documento
+                            if (ramoElement) ramoElement.textContent = data.financial_data.ramo || 'AUTOS';
+                            if (tipoEndosoElement) tipoEndosoElement.textContent = data.financial_data.tipo_endoso || 'A - MODIFICACIÓN DE DATOS';
+                        }
                     }
                     
                     // Ocultar el popup de análisis
@@ -901,6 +934,19 @@
             
             console.log('URL construida para el documento:', pdfUrl);
             
+            // Verificar qué tipo de documento estamos procesando
+            const tipoEndosoElement = pdfItem.querySelector('.document-tipo-endoso');
+            const isPolizaVida = tipoEndosoElement && tipoEndosoElement.textContent === "PÓLIZA DE VIDA";
+            
+            // Configurar los mensajes según el tipo de documento
+            const titleMessage = isPolizaVida ? "No se pudo procesar la póliza" : "Esto no es un endoso de tipo A";
+            const errorMessage = isPolizaVida 
+                ? "Este documento no pudo ser procesado correctamente como póliza de vida." 
+                : "Este documento no puede ser procesado como un endoso de tipo A.";
+            const dataErrorMessage = isPolizaVida
+                ? "No se pudieron extraer los datos de la póliza de vida."
+                : "No se pueden extraer datos financieros de este documento.";
+            
             if (previewSection) {
                 const previewContainer = previewSection.querySelector('.preview-container');
                 
@@ -916,9 +962,9 @@
                 errorDiv.innerHTML = `
                     <i class="fas fa-folder folder-icon"></i>
                     <div class="error-stamp">
-                        <h3>Esto no es un endoso de tipo A</h3>
+                        <h3>${titleMessage}</h3>
                     </div>
-                    <p class="error-message">Este documento no puede ser procesado como un endoso de tipo A.</p>
+                    <p class="error-message">${errorMessage}</p>
                     <div class="flex flex-col gap-2 mt-4">
                         <a href="#" class="pdf-external-link" data-url="${pdfUrl}">
                             <i class="fas fa-external-link-alt mr-2"></i>
@@ -959,9 +1005,9 @@
                 errorDiv.innerHTML = `
                     <i class="fas fa-folder folder-icon"></i>
                     <div class="error-stamp">
-                        <h3>Esto no es un endoso de tipo A</h3>
+                        <h3>${titleMessage}</h3>
                     </div>
-                    <p class="error-message">No se pueden extraer datos financieros de este documento.</p>
+                    <p class="error-message">${dataErrorMessage}</p>
                     <div class="flex flex-col gap-2 mt-4">
                         <a href="#" class="pdf-external-link" data-url="${pdfUrl}">
                             <i class="fas fa-external-link-alt mr-2"></i>
@@ -1101,12 +1147,130 @@
             }
         }
 
+        // Función para mostrar datos específicos de pólizas de vida
+        function displayPolizaVidaData(data, container, replaceFinancialSection = false) {
+            let polizaDataSection;
+            
+            if (replaceFinancialSection) {
+                // Usar la sección financiera existente y cambiar su título
+                polizaDataSection = container.querySelector('.pdf-data-section');
+                if (polizaDataSection) {
+                    polizaDataSection.innerHTML = '<h3 class="section-title">Datos Completos de la Póliza de Vida</h3>';
+                }
+            } else {
+                // Crear o encontrar la sección para datos de póliza
+                polizaDataSection = container.querySelector('.poliza-data-section');
+                
+                if (!polizaDataSection) {
+                    // Si no existe, crear una nueva sección después de la sección financiera
+                    const financialSection = container.querySelector('.pdf-data-section');
+                    polizaDataSection = document.createElement('div');
+                    polizaDataSection.className = 'pdf-data-section poliza-data-section mt-4';
+                    polizaDataSection.innerHTML = '<h3 class="section-title">Datos de la Póliza</h3>';
+                    
+                    // Insertar después de la sección financiera
+                    if (financialSection && financialSection.parentNode) {
+                        financialSection.parentNode.insertBefore(polizaDataSection, financialSection.nextSibling);
+                    } else {
+                        // Si no se encuentra la sección financiera, añadir al final del contenedor
+                        container.querySelector('.pdf-content').appendChild(polizaDataSection);
+                    }
+                } else {
+                    // Si ya existe, limpiarla
+                    polizaDataSection.innerHTML = '<h3 class="section-title">Datos de la Póliza</h3>';
+                }
+            }
+            
+            // Mostrar todos los datos de la póliza sin filtrar
+            for (const [key, value] of Object.entries(data)) {
+                const itemDiv = document.createElement('div');
+                itemDiv.classList.add('data-item');
+                
+                let displayValue = value === "0" ? "No disponible" : value;
+                const isVerified = value !== "0";
+                
+                // Formatear valores monetarios correctamente
+                if (isVerified && (
+                    key === "Prima Neta" || 
+                    key === "Prima anual total" || 
+                    key === "Cobertura Básica" || 
+                    key === "Coberturas adicionales con costo" ||
+                    key.includes("Prima") || 
+                    key.includes("precio") || 
+                    key.includes("Precio") || 
+                    key.includes("costo") || 
+                    key.includes("Costo")
+                )) {
+                    // Intenta convertir a número y formatear como moneda
+                    try {
+                        console.log(`Intentando formatear valor monetario: ${key}=${value}`);
+                        
+                        // Verificar si el valor ya tiene formato de moneda
+                        if (typeof value === 'string') {
+                            // Elimina cualquier caracter no numérico excepto punto y coma
+                            const numValue = value.replace(/[^\d,.]/g, '');
+                            // Reemplaza coma por punto para la conversión numérica si hay una coma como separador decimal
+                            const normalizedValue = numValue.includes(',') && !numValue.includes('.') ? 
+                                numValue.replace(',', '.') : numValue.replace(',', '');
+                            
+                            console.log(`Valor normalizado: ${normalizedValue}`);
+                            const parsedValue = parseFloat(normalizedValue);
+                            
+                            if (!isNaN(parsedValue)) {
+                                displayValue = parsedValue.toLocaleString('es-MX', { 
+                                    style: 'currency', 
+                                    currency: 'MXN',
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2 
+                                });
+                                console.log(`Valor formateado: ${displayValue}`);
+                            }
+                        }
+                    } catch (e) {
+                        console.log(`Error al formatear valor monetario: ${key}=${value}`, e);
+                        // Mantener el valor original si hay error
+                    }
+                }
+                
+                console.log(`Añadiendo campo a la interfaz: ${key}=${displayValue}`);
+                
+                const verificationStatus = isVerified 
+                    ? '<span class="verification-status auto-verified"><i class="fas fa-check-circle"></i>Verificado automáticamente</span>'
+                    : '<span class="verification-status unverified"><i class="fas fa-times-circle"></i>Sin verificar</span>';
+                
+                itemDiv.innerHTML = `
+                    <div class="data-label">${key}</div>
+                    <div class="data-value">${displayValue}</div>
+                    <div class="data-verification">
+                        ${verificationStatus}
+                    </div>
+                `;
+                
+                polizaDataSection.appendChild(itemDiv);
+            }
+        }
+
         // Modal handling
         document.addEventListener('click', (e) => {
             if (e.target.tagName === 'IMG' && e.target.closest('.preview-container')) {
                 const img = e.target;
                 const pdfData = img.getAttribute('data-pdf');
                 const financialData = JSON.parse(img.getAttribute('data-financial') || '{}');
+                
+                // Determinar si es una póliza de vida
+                const pdfItem = img.closest('.pdf-item');
+                const tipoEndosoElement = pdfItem ? pdfItem.querySelector('.document-tipo-endoso') : null;
+                const isPolizaVida = tipoEndosoElement && tipoEndosoElement.textContent === "PÓLIZA DE VIDA";
+                
+                // Obtener datos de la póliza si aplica
+                let polizaData = null;
+                if (isPolizaVida && pdfItem && pdfItem.hasAttribute('data-poliza-data')) {
+                    try {
+                        polizaData = JSON.parse(pdfItem.getAttribute('data-poliza-data'));
+                    } catch (e) {
+                        console.error("Error al leer datos de póliza:", e);
+                    }
+                }
                 
                 // Actualizar el visor de PDF
                 const modalPreview = document.getElementById('modal-preview');
@@ -1116,8 +1280,117 @@
                     modalPreview.type = 'application/pdf';
                 }
                 
-                // Actualizar los datos financieros en el modal
-                updateModalFinancialData(financialData);
+                // Actualizar los datos en el modal según el tipo de documento
+                const modalTitle = document.querySelector('.modal-data-title');
+                const modalData = document.querySelector('.modal-data-container');
+                
+                if (isPolizaVida) {
+                    // Para pólizas de vida, mostrar todos los datos completos
+                    if (modalTitle) modalTitle.textContent = "Datos Completos de la Póliza de Vida";
+                    
+                    // Limpiar el contenedor
+                    if (modalData) {
+                        modalData.innerHTML = '<h3 class="modal-data-title">Datos Completos de la Póliza de Vida</h3>';
+                        
+                        // Si tenemos datos directos de la póliza, los usamos primero
+                        if (polizaData) {
+                            console.log("Datos de póliza disponibles para modal:", polizaData);
+                            for (const [key, value] of Object.entries(polizaData)) {
+                                if (value === null || value === undefined) continue;
+                                
+                                let displayValue = value === "0" ? "No disponible" : value;
+                                
+                                // Formatear valores monetarios
+                                if (value !== "0" && (
+                                    key === "Prima Neta" || 
+                                    key === "Prima anual total" || 
+                                    key === "Cobertura Básica" || 
+                                    key === "Coberturas adicionales con costo" ||
+                                    key.includes("Prima") || 
+                                    key.includes("precio") || 
+                                    key.includes("Precio")
+                                )) {
+                                    try {
+                                        console.log(`Modal: Intentando formatear valor monetario: ${key}=${value}`);
+                                        
+                                        // Verificar si el valor ya tiene formato de moneda
+                                        if (typeof value === 'string') {
+                                            // Elimina cualquier caracter no numérico excepto punto y coma
+                                            const numValue = value.replace(/[^\d,.]/g, '');
+                                            // Reemplaza coma por punto para la conversión numérica si hay una coma como separador decimal
+                                            const normalizedValue = numValue.includes(',') && !numValue.includes('.') ? 
+                                                numValue.replace(',', '.') : numValue.replace(',', '');
+                                            
+                                            console.log(`Modal: Valor normalizado: ${normalizedValue}`);
+                                            const parsedValue = parseFloat(normalizedValue);
+                                            
+                                            if (!isNaN(parsedValue)) {
+                                                displayValue = parsedValue.toLocaleString('es-MX', { 
+                                                    style: 'currency', 
+                                                    currency: 'MXN',
+                                                    minimumFractionDigits: 2,
+                                                    maximumFractionDigits: 2 
+                                                });
+                                                console.log(`Modal: Valor formateado: ${displayValue}`);
+                                            }
+                                        }
+                                    } catch (e) {
+                                        console.error(`Error al formatear valor monetario en modal: ${key}=${value}`, e);
+                                    }
+                                }
+                                
+                                console.log(`Modal: Añadiendo campo: ${key}=${displayValue}`);
+                                
+                                const dataItem = document.createElement('div');
+                                dataItem.className = 'modal-data-item';
+                                dataItem.innerHTML = `
+                                    <div class="modal-data-label">${key}</div>
+                                    <div class="modal-data-value">${displayValue}</div>
+                                `;
+                                modalData.appendChild(dataItem);
+                            }
+                        } else {
+                            // Si no tenemos datos directos, intentamos clonar del DOM
+                            const polizaDataSection = pdfItem ? pdfItem.querySelector('.pdf-data-section') : null;
+                            if (polizaDataSection) {
+                                const polizaItems = polizaDataSection.querySelectorAll('.data-item');
+                                
+                                polizaItems.forEach(item => {
+                                    const clonedItem = document.createElement('div');
+                                    clonedItem.className = 'modal-data-item';
+                                    
+                                    const label = item.querySelector('.data-label');
+                                    const value = item.querySelector('.data-value');
+                                    
+                                    if (label && value) {
+                                        clonedItem.innerHTML = `
+                                            <div class="modal-data-label">${label.textContent}</div>
+                                            <div class="modal-data-value">${value.textContent}</div>
+                                        `;
+                                        modalData.appendChild(clonedItem);
+                                    }
+                                });
+                            }
+                        }
+                        
+                        // Si no hay datos en el modal, mostrar mensaje
+                        if (modalData.children.length <= 1) {
+                            const noDataItem = document.createElement('div');
+                            noDataItem.className = 'modal-data-item';
+                            noDataItem.innerHTML = `
+                                <div class="modal-data-label">Información</div>
+                                <div class="modal-data-value">No hay datos disponibles para esta póliza</div>
+                            `;
+                            modalData.appendChild(noDataItem);
+                        }
+                    }
+                } else {
+                    // Para endosos tipo A, mostrar datos financieros normales
+                    if (modalTitle) modalTitle.textContent = "Datos Financieros";
+                    
+                    // Actualizar los datos financieros en el modal
+                    updateModalFinancialData(financialData);
+                }
                 
                 modal.style.display = 'flex';
             }
@@ -1132,12 +1405,25 @@
                 'tasa': 'Tasa de financiamiento'
             };
 
-            Object.entries(mappings).forEach(([field, key]) => {
-                const element = document.querySelector(`.modal-data-value[data-field="${field}"]`);
-                if (element) {
-                    element.textContent = data[key] || (field === 'tasa' ? '0.00%' : '$0.00');
-                }
-            });
+            // Limpiamos el contenedor de datos
+            const modalData = document.querySelector('.modal-data-container');
+            if (modalData) {
+                modalData.innerHTML = '<h3 class="modal-data-title">Datos Financieros</h3>';
+                
+                // Recreamos los elementos para los datos financieros
+                Object.entries(mappings).forEach(([field, key]) => {
+                    const valueToDisplay = data[key] || (field === 'tasa' ? '0.00%' : '$0.00');
+                    
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = 'modal-data-item';
+                    itemDiv.innerHTML = `
+                        <div class="modal-data-label">${key}</div>
+                        <div class="modal-data-value" data-field="${field}">${valueToDisplay}</div>
+                    `;
+                    
+                    modalData.appendChild(itemDiv);
+                });
+            }
         }
 
         modalClose.addEventListener('click', () => {

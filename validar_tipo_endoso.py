@@ -1,8 +1,11 @@
 import fitz
 import re
 import logging
+import os
+import json
 from typing import Dict, Optional
 from endosos_autos_a import extraer_datos_endoso_a
+from data_ia_general_vida import procesar_archivo
 
 # Configuración de logging
 logging.basicConfig(
@@ -32,22 +35,31 @@ def extract_text_from_pdf(pdf_path: str) -> str:
         logger.error(f"Error al extraer texto del PDF: {str(e)}")
         return ""
 
-def detect_endoso_type(text: str) -> Optional[str]:
+def detect_document_type(text: str) -> str:
     """
-    Detecta el tipo de endoso basado en el contenido del texto.
+    Detecta el tipo de documento basado en el contenido del texto.
     
     Args:
         text (str): Texto extraído del PDF
         
     Returns:
-        Optional[str]: Tipo de endoso detectado o None si no se puede determinar
+        str: Tipo de documento detectado ('ENDOSO_A', 'POLIZA_VIDA', 'DESCONOCIDO')
     """
     # Normalizar el texto
     text = text.lower()
     text = re.sub(r'\s+', ' ', text)
     
+    # Patrones para identificar póliza de vida
+    patrones_vida = [
+        r"ordinario de vida",
+        r"seguro de vida",
+        r"p[óo]liza de vida",
+        r"beneficiario(s)?\s+del\s+seguro",
+        r"suma\s+asegurada\s+por\s+fallecimiento"
+    ]
+    
     # Patrones para identificar endoso tipo A
-    patterns = [
+    patrones_endoso_a = [
         r"endoso\s+tipo\s+a",
         r"endoso\s+de\s+modificación\s+de\s+datos",
         r"modificación\s+de\s+datos\s+del\s+asegurado",
@@ -60,20 +72,41 @@ def detect_endoso_type(text: str) -> Optional[str]:
         r"endoso\s+tipo\s+a\s+modificación"
     ]
     
-    # Buscar patrones en el texto
-    for pattern in patterns:
-        if re.search(pattern, text):
-            logger.info(f"Detectado endoso tipo A con patrón: {pattern}")
-            return "A"
+    # Buscar patrones de póliza de vida
+    for patron in patrones_vida:
+        if re.search(patron, text):
+            logger.info(f"Detectada póliza de vida con patrón: {patron}")
+            return "POLIZA_VIDA"
     
-    # Si no se encuentra ningún patrón, asumimos que es tipo A por defecto
-    # ya que mencionaste que todos son de tipo A
-    logger.info("No se encontró patrón específico, asumiendo endoso tipo A por defecto")
-    return "A"
+    # Buscar patrones de endoso tipo A
+    for patron in patrones_endoso_a:
+        if re.search(patron, text):
+            logger.info(f"Detectado endoso tipo A con patrón: {patron}")
+            return "ENDOSO_A"
+    
+    # Si no se encuentra ningún patrón, tipo desconocido
+    logger.info("No se encontró patrón específico, documento de tipo desconocido")
+    return "DESCONOCIDO"
+
+def detect_endoso_type(text: str) -> Optional[str]:
+    """
+    Detecta el tipo de endoso basado en el contenido del texto.
+    
+    Args:
+        text (str): Texto extraído del PDF
+        
+    Returns:
+        Optional[str]: Tipo de endoso detectado o None si no se puede determinar
+    """
+    # Esta función se mantiene para compatibilidad con el código existente
+    doc_type = detect_document_type(text)
+    if doc_type == "ENDOSO_A":
+        return "A"
+    return None
 
 def validate_endoso(pdf_path: str) -> Dict:
     """
-    Valida el tipo de endoso y extrae los datos financieros si corresponde.
+    Valida el tipo de documento y extrae los datos correspondientes.
     
     Args:
         pdf_path (str): Ruta al archivo PDF
@@ -94,10 +127,7 @@ def validate_endoso(pdf_path: str) -> Dict:
             logger.error(f"El PDF {pdf_path} no tiene páginas.")
             return {"error": "El PDF no tiene páginas"}
             
-        # Obtener el texto de la primera página
-        # Usar fitz para extraer texto también, puede ser más robusto que PyPDF2 en algunos casos
-        # texto = doc[0].get_text()
-        # Intentemos extraer con PyPDF2 primero como lo hace extraer_datos_endoso_a
+        # Extraer texto para la detección
         try:
             from PyPDF2 import PdfReader
             reader = PdfReader(pdf_path)
@@ -107,43 +137,70 @@ def validate_endoso(pdf_path: str) -> Dict:
                  texto = "" # O manejar error si prefieres
         except Exception as e_pypdf:
              logger.warning(f"PyPDF2 no pudo extraer texto de {pdf_path}: {e_pypdf}")
-             # Fallback a fitz si PyPDF2 falla?
+             # Fallback a fitz si PyPDF2 falla
              logger.info(f"Intentando extraer texto con fitz para {pdf_path}...")
              texto = doc[0].get_text()
              if not texto:
                  logger.error(f"fitz tampoco pudo extraer texto de {pdf_path}")
                  return {"error": "No se pudo extraer texto del PDF con ninguna librería"}
 
-        # Buscar el tipo de endoso usando la función robusta
-        tipo_endoso = detect_endoso_type(texto)
+        # Detectar el tipo de documento
+        tipo_documento = detect_document_type(texto)
         
-        if not tipo_endoso:
-            # Si detect_endoso_type no pudo determinarlo (aunque actualmente siempre devuelve 'A')
-            logger.error(f"No se pudo determinar el tipo de endoso para {pdf_path}")
-            return {"error": "No se pudo determinar el tipo de endoso con los patrones disponibles"}
-            
-        # Si es tipo A, extraer datos financieros
-        if tipo_endoso == 'A':
+        # Procesar según el tipo de documento
+        if tipo_documento == "ENDOSO_A":
             logger.info(f"Endoso tipo A detectado para {pdf_path}. Procediendo a extraer datos financieros.")
-            # Pasamos el path, ya que extraer_datos_endoso_a maneja la extracción de texto internamente
             datos_financieros = extraer_datos_endoso_a(pdf_path)
             if datos_financieros:
                 logger.info(f"Datos financieros extraídos exitosamente para {pdf_path}.")
                 return {
+                    "tipo_documento": "ENDOSO_A",
                     "tipo_endoso": "A",
-                    "descripcion": "MODIFICACIÓN DE DATOS", # Asumido para tipo A
+                    "descripcion": "MODIFICACIÓN DE DATOS",
                     "datos_financieros": datos_financieros
                 }
             else:
                 logger.error(f"Se detectó Endoso A para {pdf_path}, pero no se pudieron extraer los datos financieros.")
                 return {"error": "Se detectó Endoso A, pero no se pudieron extraer los datos financieros"}
+        
+        elif tipo_documento == "POLIZA_VIDA":
+            logger.info(f"Póliza de vida detectada para {pdf_path}. Procediendo a extraer datos.")
+            
+            # Crear directorio de salida temporal si no existe
+            output_dir = os.path.join(os.path.dirname(pdf_path), "output")
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Procesar el archivo y obtener datos
+            datos_vida = procesar_archivo(pdf_path, output_dir)
+            
+            if datos_vida:
+                logger.info(f"Datos de póliza de vida extraídos exitosamente para {pdf_path}.")
+                # Convertir los datos a formato financiero esperado por el frontend
+                datos_financieros = {
+                    "prima_neta": datos_vida.get("Prima Neta", "0"),
+                    "gastos_expedicion": "0",  # No aplica para pólizas de vida
+                    "iva": datos_vida.get("I.V.A.", "0"),
+                    "precio_total": datos_vida.get("Prima anual total", "0"),
+                    "tasa_financiamiento": "0"  # No aplica para pólizas de vida
+                }
+                
+                return {
+                    "tipo_documento": "POLIZA_VIDA",
+                    "descripcion": "PÓLIZA DE VIDA",
+                    "datos_financieros": datos_financieros,
+                    "datos_completos": datos_vida
+                }
+            else:
+                logger.error(f"Se detectó póliza de vida para {pdf_path}, pero no se pudieron extraer los datos.")
+                return {"error": "Se detectó póliza de vida, pero no se pudieron extraer los datos"}
+        
         else:
-            logger.warning(f"Tipo de endoso no soportado actualmente: {tipo_endoso} en {pdf_path}")
-            return {"error": f"Tipo de endoso no soportado actualmente: {tipo_endoso}"}
+            logger.warning(f"Tipo de documento no soportado o desconocido para {pdf_path}")
+            return {"error": "Tipo de documento no soportado o desconocido"}
             
     except Exception as e:
-        # Capturar errores específicos de fitz si es posible, o generales
-        logger.error(f"Error general al validar endoso {pdf_path}: {str(e)}", exc_info=True)
+        # Capturar errores específicos
+        logger.error(f"Error general al validar documento {pdf_path}: {str(e)}", exc_info=True)
         return {"error": f"Error interno al procesar el PDF: {str(e)}"}
     finally:
         if doc:
@@ -151,6 +208,6 @@ def validate_endoso(pdf_path: str) -> Dict:
 
 if __name__ == "__main__":
     # Ejemplo de uso
-    pdf_path = "ruta/al/endoso.pdf"  # Reemplazar con la ruta real
+    pdf_path = "ruta/al/documento.pdf"  # Reemplazar con la ruta real
     resultado = validate_endoso(pdf_path)
     print(resultado) 
