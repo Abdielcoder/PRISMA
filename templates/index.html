@@ -542,7 +542,17 @@
                 </div>
                 <div class="pdf-content">
                     <div class="pdf-preview-section">
-                        <h3 class="section-title">Vista Previa del Documento</h3>
+                        <h3 class="section-title">VISTA PREVIA DEL DOCUMENTO</h3>
+                        <div class="document-info bg-gray-800 p-4 mb-4 rounded-lg">
+                            <div class="info-item mb-2">
+                                <span class="text-gray-400">Ramo:</span>
+                                <span class="text-white ml-2 document-ramo">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="text-gray-400">Tipo de Endoso:</span>
+                                <span class="text-white ml-2 document-tipo-endoso">-</span>
+                            </div>
+                        </div>
                         <div class="preview-container p-4 rounded-lg">
                             <img class="mx-auto cursor-pointer" alt="Vista Previa del PDF">
                         </div>
@@ -625,6 +635,8 @@
         async function processUpload(formData, pdfItem) {
             const statusElement = pdfItem.querySelector('.pdf-item-status');
             const previewElement = pdfItem.querySelector('img');
+            const ramoElement = pdfItem.querySelector('.document-ramo');
+            const tipoEndosoElement = pdfItem.querySelector('.document-tipo-endoso');
 
             try {
                 const response = await fetch('/upload', {
@@ -636,16 +648,17 @@
 
                 if (response.ok) {
                     if (data.preview) {
-                        // Guardar el PDF base64 como atributo de datos
                         previewElement.setAttribute('data-pdf', data.pdf_data);
-                        // Mostrar la vista previa como imagen
                         previewElement.src = `data:image/png;base64,${data.preview}`;
                     }
                     
                     if (data.financial_data) {
                         displayFinancialData(data.financial_data, pdfItem);
-                        // Guardar los datos financieros como atributo de datos
                         previewElement.setAttribute('data-financial', JSON.stringify(data.financial_data));
+                        
+                        // Actualizar información del documento
+                        if (ramoElement) ramoElement.textContent = data.financial_data.ramo || 'AUTOS';
+                        if (tipoEndosoElement) tipoEndosoElement.textContent = data.financial_data.tipo_endoso || 'A - MODIFICACIÓN DE DATOS';
                     }
                     
                     statusElement.textContent = 'Completado';
