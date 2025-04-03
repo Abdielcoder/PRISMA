@@ -14,8 +14,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # --- Configuración ---
-JSON_FILE_PATH = "URLS.json"
-OUTPUT_DIRECTORY = "A-2"
+JSON_FILE_PATH = "URLS_VIDA.json"  # Cambiado para usar el archivo de pólizas de vida
+OUTPUT_DIRECTORY = "Ordinario-Vida-1"  # Cambiado para guardar en la carpeta Ordinario-Vida-1
 # --------------------
 
 def download_pdf(url: str, output_path: str):
@@ -84,13 +84,13 @@ def main():
             if not file_name.lower().endswith('.pdf'):
                  # Intentar un nombre genérico si no parece un PDF válido
                  logger.warning(f"URL no parece terminar en .pdf: {url}. Usando nombre genérico.")
-                 file_name = f"descarga_{descargas_exitosas + descargas_fallidas + 1}.pdf"
+                 file_name = f"poliza_vida_{descargas_exitosas + descargas_fallidas + 1}.pdf"
                  # Opcional: podrías decidir saltar esta URL si quieres ser más estricto
                  # descargas_fallidas += 1
                  # continue 
         except Exception:
             logger.warning(f"No se pudo extraer nombre de archivo de la URL: {url}. Usando nombre genérico.")
-            file_name = f"descarga_{descargas_exitosas + descargas_fallidas + 1}.pdf"
+            file_name = f"poliza_vida_{descargas_exitosas + descargas_fallidas + 1}.pdf"
             
         output_path = os.path.join(OUTPUT_DIRECTORY, file_name)
         
