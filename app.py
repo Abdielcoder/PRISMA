@@ -207,6 +207,9 @@ def upload_file():
         elif resultado.get("tipo_documento") == "POLIZA_ALIADOS_PPR":
             respuesta_financiera_base["ramo"] = "VIDA"
             respuesta_financiera_base["tipo_endoso"] = resultado.get("descripcion") or "PÓLIZA ALIADOS+ PPR"
+        elif resultado.get("tipo_documento") == "POLIZA_PROTGT_TEMPORAL_MN":
+            respuesta_financiera_base["ramo"] = "VIDA"
+            respuesta_financiera_base["tipo_endoso"] = resultado.get("descripcion") or "PÓLIZA PROTGT TEMPORAL MN"
         elif resultado.get("tipo_documento") == "POLIZA_VIDA":
             respuesta_financiera_base["ramo"] = "VIDA"
             respuesta_financiera_base["tipo_endoso"] = resultado.get("descripcion") or "PÓLIZA DE VIDA"

@@ -9,6 +9,7 @@ from data_ia_general_vida import procesar_archivo
 from data_ia_general_vida_individual import procesar_archivo as procesar_archivo_individual
 from data_ia_general_protgt_ordinario import procesar_archivo as procesar_archivo_protgt_ordinario
 from data_ia_general_protgt_ppr import procesar_archivo as procesar_archivo_aliados_ppr
+from data_ia_general_protgt_mn import procesar_archivo as procesar_archivo_protgt_temporal_mn
 
 # Configuración de logging
 logging.basicConfig(
@@ -47,7 +48,7 @@ def detect_document_type(text: str) -> str:
         
     Returns:
         str: Tipo de documento detectado ('ENDOSO_A', 'POLIZA_VIDA', 'POLIZA_VIDA_INDIVIDUAL', 
-                                         'PROTEGETE_ORDINARIO', 'ALIADOS_PPR', 'DESCONOCIDO')
+                                         'PROTEGETE_ORDINARIO', 'ALIADOS_PPR', 'PROTGT_TEMPORAL_MN', 'DESCONOCIDO')
     """
     # Normalizar el texto
     text = text.lower()
@@ -67,6 +68,15 @@ def detect_document_type(text: str) -> str:
         r"aliados\s*mas",
         r"ahorro.*programado",
         r"seguro.*aliados"
+    ]
+    
+    # Patrones para identificar Protegete Temporal MN
+    patrones_protgt_temporal_mn = [
+        r"vida protgt temporal mn",
+        r"protgt temporal mn",
+        r"temporal mn",
+        r"carátula de póliza.*temporal mn",
+        r"vida protgt temporal"
     ]
     
     # Patrones para identificar Protegete Ordinario
@@ -117,25 +127,31 @@ def detect_document_type(text: str) -> str:
             logger.info(f"Detectada póliza Aliados+ PPR con patrón: {patron}")
             return "ALIADOS_PPR"
             
-    # 2. Buscar patrones de Protegete Ordinario
+    # 2. Buscar patrones de Protegete Temporal MN
+    for patron in patrones_protgt_temporal_mn:
+        if re.search(patron, text):
+            logger.info(f"Detectada póliza Protegete Temporal MN con patrón: {patron}")
+            return "PROTGT_TEMPORAL_MN"
+            
+    # 3. Buscar patrones de Protegete Ordinario
     for patron in patrones_protegete_ordinario:
         if re.search(patron, text):
             logger.info(f"Detectada póliza Protegete Ordinario con patrón: {patron}")
             return "PROTEGETE_ORDINARIO"
             
-    # 3. Buscar patrones de póliza de vida individual
+    # 4. Buscar patrones de póliza de vida individual
     for patron in patrones_vida_individual:
         if re.search(patron, text):
             logger.info(f"Detectada póliza de vida individual con patrón: {patron}")
             return "POLIZA_VIDA_INDIVIDUAL"
             
-    # 4. Buscar patrones de póliza de vida (genérico)
+    # 5. Buscar patrones de póliza de vida (genérico)
     for patron in patrones_vida:
         if re.search(patron, text):
             logger.info(f"Detectada póliza de vida con patrón: {patron}")
             return "POLIZA_VIDA"
             
-    # 5. Buscar patrones de endoso tipo A (al final)
+    # 6. Buscar patrones de endoso tipo A (al final)
     for patron in patrones_endoso_a:
         if re.search(patron, text):
             logger.info(f"Detectado endoso tipo A con patrón: {patron}")
@@ -251,6 +267,38 @@ def validate_endoso(pdf_path: str) -> Dict:
             else:
                 logger.error(f"Se detectó póliza Aliados+ PPR para {pdf_path}, pero no se pudieron extraer los datos.")
                 return {"error": "Se detectó póliza Aliados+ PPR, pero no se pudieron extraer los datos"}
+        
+        elif tipo_documento == "PROTGT_TEMPORAL_MN":
+            logger.info(f"Póliza Protegete Temporal MN detectada para {pdf_path}. Procediendo a extraer datos.")
+            
+            # Crear directorio de salida temporal si no existe
+            output_dir = os.path.join(os.path.dirname(pdf_path), "output")
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Procesar el archivo y obtener datos con el script para pólizas Protegete Temporal MN
+            datos_protgt_temporal_mn = procesar_archivo_protgt_temporal_mn(pdf_path, output_dir)
+            
+            if datos_protgt_temporal_mn:
+                logger.info(f"Datos de póliza Protegete Temporal MN extraídos exitosamente para {pdf_path}.")
+                # Convertir los datos a formato financiero esperado por el frontend
+                datos_financieros = {
+                    "prima_neta": datos_protgt_temporal_mn.get("Prima Neta", "0"),
+                    "gastos_expedicion": "0",  # No aplica para este tipo de pólizas
+                    "iva": datos_protgt_temporal_mn.get("I.V.A.", "0"),
+                    "precio_total": datos_protgt_temporal_mn.get("Prima anual total", "0"),
+                    "tasa_financiamiento": "0",  # No aplica para este tipo de pólizas
+                    "prima_mensual": datos_protgt_temporal_mn.get("Prima mensual", "0")
+                }
+                
+                return {
+                    "tipo_documento": "POLIZA_PROTGT_TEMPORAL_MN",
+                    "descripcion": "PÓLIZA PROTGT TEMPORAL MN",
+                    "datos_financieros": datos_financieros,
+                    "datos_completos": datos_protgt_temporal_mn
+                }
+            else:
+                logger.error(f"Se detectó póliza Protegete Temporal MN para {pdf_path}, pero no se pudieron extraer los datos.")
+                return {"error": "Se detectó póliza Protegete Temporal MN, pero no se pudieron extraer los datos"}
         
         elif tipo_documento == "PROTEGETE_ORDINARIO":
             logger.info(f"Póliza Protegete Ordinario detectada para {pdf_path}. Procediendo a extraer datos.")

@@ -887,6 +887,21 @@
                             // Actualizar información del documento
                             if (ramoElement) ramoElement.textContent = "VIDA";
                             if (tipoEndosoElement) tipoEndosoElement.textContent = data.description || "PÓLIZA ALIADOS+ PPR";
+                        } else if (data.document_type === "POLIZA_PROTGT_TEMPORAL_MN" && data.poliza_data) {
+                            console.log("Datos de póliza Protegete Temporal MN recibidos:", data.poliza_data);
+                            console.log("Prima Neta recibida:", data.poliza_data["Prima Neta"]);
+                            console.log("Prima anual total recibida:", data.poliza_data["Prima anual total"]);
+                            
+                            // Guardar los datos de la póliza en el elemento pdfItem
+                            pdfItem.setAttribute('data-poliza-data', JSON.stringify(data.poliza_data));
+                            
+                            // Mostrar todos los datos de la póliza en lugar de los financieros
+                            displayPolizaVidaData(data.poliza_data, pdfItem, true);
+                            previewElement.setAttribute('data-financial', JSON.stringify(data.financial_data));
+                            
+                            // Actualizar información del documento
+                            if (ramoElement) ramoElement.textContent = "VIDA";
+                            if (tipoEndosoElement) tipoEndosoElement.textContent = data.description || "PÓLIZA PROTGT TEMPORAL MN";
                         } else {
                             // Para endosos tipo A, mostrar datos financieros normalmente
                             displayFinancialData(data.financial_data, pdfItem);
@@ -951,7 +966,10 @@
             
             // Verificar qué tipo de documento estamos procesando
             const tipoEndosoElement = pdfItem.querySelector('.document-tipo-endoso');
-            const isPolizaVida = tipoEndosoElement && tipoEndosoElement.textContent === "PÓLIZA DE VIDA";
+            const isPolizaVida = tipoEndosoElement && 
+                                (tipoEndosoElement.textContent === "PÓLIZA DE VIDA" || 
+                                 tipoEndosoElement.textContent === "PÓLIZA ALIADOS+ PPR" ||
+                                 tipoEndosoElement.textContent === "PÓLIZA PROTGT TEMPORAL MN");
             
             // Configurar los mensajes según el tipo de documento
             const titleMessage = isPolizaVida ? "No se pudo procesar la póliza" : "Esto no es un endoso de tipo A";
@@ -1275,7 +1293,9 @@
                 // Determinar si es una póliza de vida o Aliados+ PPR
                 const pdfItem = img.closest('.pdf-item');
                 const tipoEndosoElement = pdfItem ? pdfItem.querySelector('.document-tipo-endoso') : null;
-                const isPolizaVida = tipoEndosoElement && (tipoEndosoElement.textContent === "PÓLIZA DE VIDA" || tipoEndosoElement.textContent === "PÓLIZA ALIADOS+ PPR");
+                const isPolizaVida = tipoEndosoElement && (tipoEndosoElement.textContent === "PÓLIZA DE VIDA" || 
+                                                          tipoEndosoElement.textContent === "PÓLIZA ALIADOS+ PPR" ||
+                                                          tipoEndosoElement.textContent === "PÓLIZA PROTGT TEMPORAL MN");
                 
                 // Obtener datos de la póliza si aplica
                 let polizaData = null;
