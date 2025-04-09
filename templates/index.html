@@ -632,6 +632,7 @@
                     <option value="POLIZA_VIDA_PROTGT">Póliza VIDA PROTGT</option>
                     <option value="PROTECCION_EFECTIVA">Póliza Protección Efectiva</option>
                     <option value="PROTGT_PYME">Plan Protege PYME</option>
+                    <option value="SALUD_FAMILIAR">Póliza de Gastos Médicos Familiar</option>
                     <option value="DESCONOCIDO">Desconocido</option>
                 </select>
             </div>
@@ -817,6 +818,34 @@
                                 </span>
                             </div>
                         </div>
+                        <!-- Campos financieros para pólizas de salud familiar -->
+                        <div class="data-item">
+                            <div class="data-label">Descuento familiar</div>
+                            <div class="data-value">$0.00</div>
+                            <div class="data-verification">
+                                <span class="verification-status unverified">
+                                    <i class="fas fa-times-circle"></i>Sin verificar
+                                </span>
+                            </div>
+                        </div>
+                        <div class="data-item">
+                            <div class="data-label">Cesión de Comisión</div>
+                            <div class="data-value">$0.00</div>
+                            <div class="data-verification">
+                                <span class="verification-status unverified">
+                                    <i class="fas fa-times-circle"></i>Sin verificar
+                                </span>
+                            </div>
+                        </div>
+                        <div class="data-item">
+                            <div class="data-label">Recargo por pago fraccionado</div>
+                            <div class="data-value">$0.00</div>
+                            <div class="data-verification">
+                                <span class="verification-status unverified">
+                                    <i class="fas fa-times-circle"></i>Sin verificar
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `;
@@ -932,6 +961,24 @@
                             // Actualizar información del documento
                             if (ramoElement) ramoElement.textContent = "VIDA";
                             if (tipoEndosoElement) tipoEndosoElement.textContent = data.description || "PÓLIZA VIDA PROTGT";
+                        } else if (data.document_type === "SALUD_FAMILIAR" && data.poliza_data) {
+                            console.log("Datos de póliza de Gastos Médicos Mayores Familiar recibidos:", data.poliza_data);
+                            console.log("Prima Neta recibida:", data.poliza_data["Prima Neta"]);
+                            console.log("Prima anual total recibida:", data.poliza_data["Prima anual total"]);
+                            console.log("Descuento familiar recibido:", data.poliza_data["Descuento familiar"]);
+                            console.log("Cesión de Comisión recibida:", data.poliza_data["Cesión de Comisión"]);
+                            console.log("Recargo por pago fraccionado recibido:", data.poliza_data["Recargo por pago fraccionado"]);
+                            
+                            // Guardar los datos de la póliza en el elemento pdfItem
+                            pdfItem.setAttribute('data-poliza-data', JSON.stringify(data.poliza_data));
+                            
+                            // Mostrar todos los datos de la póliza en lugar de los financieros
+                            displayPolizaVidaData(data.poliza_data, pdfItem, true);
+                            previewElement.setAttribute('data-financial', JSON.stringify(data.financial_data));
+                            
+                            // Actualizar información del documento
+                            if (ramoElement) ramoElement.textContent = "SALUD";
+                            if (tipoEndosoElement) tipoEndosoElement.textContent = data.description || "PÓLIZA DE GASTOS MÉDICOS MAYORES FAMILIAR";
                         } else {
                             // Para endosos tipo A, mostrar datos financieros normalmente
                             displayFinancialData(data.financial_data, pdfItem);
@@ -1154,8 +1201,23 @@
                 return; // Salir si no se encuentra el contenedor
             }
             
-            // Limpiar solo el contenedor específico
-            financialDataDiv.innerHTML = '<h3 class="section-title">Datos Financieros</h3>'; 
+            // NO limpiamos completamente el contenedor para preservar la estructura existente
+            // Obtener el título y mantenerlo
+            const sectionTitle = financialDataDiv.querySelector('.section-title');
+            
+            // Mantener el título y limpiar solo los datos
+            if (sectionTitle) {
+                // En lugar de limpiar todo, preservamos el título y eliminamos solo los data-items existentes
+                const existingItems = financialDataDiv.querySelectorAll('.data-item');
+                existingItems.forEach(item => item.remove());
+                
+                // Asegurarnos de que el título permanezca en el contenedor
+                financialDataDiv.innerHTML = '';
+                financialDataDiv.appendChild(sectionTitle);
+            } else {
+                // Si no hay título, simplemente agregamos uno nuevo
+                financialDataDiv.innerHTML = '<h3 class="section-title">Datos Financieros</h3>';
+            }
             
             // Recrear el popup pero mantenerlo oculto
             const popupDiv = document.createElement('div');
@@ -1170,35 +1232,110 @@
             `;
             financialDataDiv.appendChild(popupDiv);
 
-            // Iterar y crear elementos como antes, pero añadiéndolos a financialDataDiv
-            for (const [key, value] of Object.entries(data)) {
+            // Crear un array de campos estándar para asegurarnos de que siempre se incluyan
+            const camposEstandar = [
+                "Prima neta", 
+                "Gastos por expedición", 
+                "I.V.A.", 
+                "Precio total", 
+                "Tasa de financiamiento", 
+                "Prima mensual"
+            ];
+            
+            // Campos específicos para pólizas de salud familiar
+            const camposSaludFamiliar = [
+                "Descuento familiar",
+                "Cesión de Comisión",
+                "Recargo por pago fraccionado",
+                "Prima base I.V.A."
+            ];
+            
+            // Determinar si estamos mostrando campos de una póliza de salud familiar
+            const isSaludFamiliar = Object.keys(data).some(key => 
+                camposSaludFamiliar.includes(key) && 
+                data[key] && 
+                data[key] !== "0" && 
+                data[key] !== "0.00"
+            );
+            
+            // Array final de campos a mostrar
+            const camposAMostrar = [...camposEstandar];
+            
+            // Si es una póliza de salud familiar, agregar los campos específicos
+            if (isSaludFamiliar) {
+                camposAMostrar.push(...camposSaludFamiliar);
+            }
+            
+            // Primero agregamos los campos estándar en el orden definido
+            camposAMostrar.forEach(campo => {
+                const valor = data[campo] || "0.00";
+                
                 // Crear el div para el item financiero
                 const itemDiv = document.createElement('div');
-                itemDiv.classList.add('data-item'); // Usar la clase original para estructura y estilos
+                itemDiv.classList.add('data-item');
                 
                 let displayValue = 'N/A';
                 let verificationStatusHTML = '<span class="verification-status unverified"><i class="fas fa-times-circle"></i>Sin verificar</span>';
-
-                // Lógica para formatear valor y estado de verificación
-                if (key === "Tasa de financiamiento") {
-                    if (value === null || value === undefined) {
-                        displayValue = 'N/A'; // O mantener "Sin verificar" si se prefiere
+                
+                // Formatear valor y estado de verificación
+                if (campo === "Tasa de financiamiento") {
+                    if (valor === null || valor === undefined || valor === "0.00") {
+                        displayValue = '0.00%';
                     } else {
-                        displayValue = parseFloat(value).toFixed(2);
-                        // Si es 0.00, marcar como verificado automáticamente
-                        verificationStatusHTML = '<span class="verification-status auto-verified"><i class="fas fa-check-circle"></i>Verificado automáticamente</span>'; 
-                    }
-                } else if (value !== null && value !== undefined) {
-                     const numericValue = parseFloat(value);
-                     if (!isNaN(numericValue)) {
-                        displayValue = numericValue.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+                        displayValue = parseFloat(valor).toFixed(2) + '%';
                         verificationStatusHTML = '<span class="verification-status auto-verified"><i class="fas fa-check-circle"></i>Verificado automáticamente</span>';
-                     } else {
-                        displayValue = 'Valor inválido';
-                     }
-                } // else: displayValue sigue siendo 'N/A', verificationStatusHTML sigue siendo 'Sin verificar'
-
-                // Construir el HTML interno del data-item
+                    }
+                } else {
+                    const numericValue = parseFloat(String(valor).replace(',', ''));
+                    if (!isNaN(numericValue)) {
+                        displayValue = numericValue.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+                        if (numericValue > 0) {
+                            verificationStatusHTML = '<span class="verification-status auto-verified"><i class="fas fa-check-circle"></i>Verificado automáticamente</span>';
+                        }
+                    }
+                }
+                
+                // Construir el HTML
+                itemDiv.innerHTML = `
+                    <div class="data-label">${campo}</div>
+                    <div class="data-value">${displayValue}</div>
+                    <div class="data-verification">
+                        ${verificationStatusHTML}
+                    </div>
+                `;
+                financialDataDiv.appendChild(itemDiv);
+            });
+            
+            // Luego agregamos cualquier otro campo adicional que pueda venir en los datos
+            for (const [key, value] of Object.entries(data)) {
+                // Saltamos los que ya procesamos y los campos internos como ramo y tipo_endoso
+                if (
+                    camposEstandar.includes(key) || 
+                    key === "ramo" || 
+                    key === "tipo_endoso"
+                ) {
+                    continue;
+                }
+                
+                // Crear el div para campos adicionales
+                const itemDiv = document.createElement('div');
+                itemDiv.classList.add('data-item');
+                
+                let displayValue = 'N/A';
+                let verificationStatusHTML = '<span class="verification-status unverified"><i class="fas fa-times-circle"></i>Sin verificar</span>';
+                
+                if (value !== null && value !== undefined) {
+                    const numericValue = parseFloat(String(value).replace(',', ''));
+                    if (!isNaN(numericValue)) {
+                        displayValue = numericValue.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+                        if (numericValue > 0) {
+                            verificationStatusHTML = '<span class="verification-status auto-verified"><i class="fas fa-check-circle"></i>Verificado automáticamente</span>';
+                        }
+                    } else {
+                        displayValue = value;
+                    }
+                }
+                
                 itemDiv.innerHTML = `
                     <div class="data-label">${key}</div>
                     <div class="data-value">${displayValue}</div>
@@ -1206,7 +1343,6 @@
                         ${verificationStatusHTML}
                     </div>
                 `;
-                // Añadir el item al contenedor correcto
                 financialDataDiv.appendChild(itemDiv);
             }
         }
@@ -1219,7 +1355,7 @@
                 // Usar la sección financiera existente y cambiar su título
                 polizaDataSection = container.querySelector('.pdf-data-section');
                 if (polizaDataSection) {
-                    polizaDataSection.innerHTML = '<h3 class="section-title">Datos Completos de la Póliza de Vida</h3>';
+                    polizaDataSection.innerHTML = '<h3 class="section-title">Datos Completos de la Póliza</h3>';
                 }
             } else {
                 // Crear o encontrar la sección para datos de póliza
@@ -1245,11 +1381,71 @@
                 }
             }
             
+            // Determinar si es una póliza de salud familiar por la presencia de campos específicos
+            const isSaludFamiliar = data && (data["Descuento familiar"] || data["Cesión de Comisión"] || data["Recargo por pago fraccionado"]);
+            
+            // Si es una póliza de salud familiar, mostrar primero los campos prioritarios
+            if (isSaludFamiliar) {
+                console.log("Mostrando campos prioritarios para póliza de salud familiar");
+                
+                // Campos prioritarios para mostrar primero
+                const camposPrioritarios = [
+                    "Prima Neta",
+                    "Prima anual total",
+                    "I.V.A.",
+                    "Prima base I.V.A.",
+                    "Gastos de Expedición",
+                    "Descuento familiar",
+                    "Cesión de Comisión",
+                    "Recargo por pago fraccionado",
+                    "Derecho de póliza"
+                ];
+                
+                // Mostrar campos prioritarios primero
+                camposPrioritarios.forEach(campo => {
+                    if (campo in data && data[campo] !== "0" && data[campo] !== "0.00") {
+                        const itemDiv = document.createElement('div');
+                        itemDiv.classList.add('data-item');
+                        
+                        let displayValue = data[campo];
+                        
+                        // Formatear valores monetarios
+                        if (["Prima Neta", "Prima anual total", "I.V.A.", "Descuento familiar", "Cesión de Comisión", "Recargo por pago fraccionado", "Derecho de póliza"].includes(campo)) {
+                            try {
+                                const numericValue = parseFloat(String(displayValue).replace(',', ''));
+                                if (!isNaN(numericValue)) {
+                                    displayValue = numericValue.toLocaleString('es-MX', { 
+                                        style: 'currency', 
+                                        currency: 'MXN',
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2 
+                                    });
+                                }
+                            } catch (e) {
+                                console.log(`Error al formatear valor monetario: ${campo}=${data[campo]}`, e);
+                            }
+                        }
+                        
+                        const verificationStatus = '<span class="verification-status auto-verified"><i class="fas fa-check-circle"></i>Verificado automáticamente</span>';
+                        
+                        itemDiv.innerHTML = `
+                            <div class="data-label">${campo}</div>
+                            <div class="data-value">${displayValue}</div>
+                            <div class="data-verification">
+                                ${verificationStatus}
+                            </div>
+                        `;
+                        
+                        polizaDataSection.appendChild(itemDiv);
+                    }
+                });
+            }
+            
             // Mostrar todos los datos de la póliza sin filtrar
             for (const [key, value] of Object.entries(data)) {
-                // Ignorar el campo de coberturas adicionales con costo
-                if (key === "Coberturas adicionales con costo") {
-                    console.log("Ignorando campo de coberturas adicionales con costo");
+                // Ignorar el campo de coberturas adicionales con costo y los campos ya mostrados en el caso de pólizas de salud familiar
+                if (key === "Coberturas adicionales con costo" || 
+                    (isSaludFamiliar && ["Prima Neta", "Prima anual total", "I.V.A.", "Descuento familiar", "Cesión de Comisión", "Recargo por pago fraccionado", "Derecho de póliza"].includes(key))) {
                     continue;
                 }
                 
@@ -1272,8 +1468,6 @@
                 )) {
                     // Intenta convertir a número y formatear como moneda
                     try {
-                        console.log(`Intentando formatear valor monetario: ${key}=${value}`);
-                        
                         // Verificar si el valor ya tiene formato de moneda
                         if (typeof value === 'string') {
                             // Elimina cualquier caracter no numérico excepto punto y coma
@@ -1282,7 +1476,6 @@
                             const normalizedValue = numValue.includes(',') && !numValue.includes('.') ? 
                                 numValue.replace(',', '.') : numValue.replace(',', '');
                             
-                            console.log(`Valor normalizado: ${normalizedValue}`);
                             const parsedValue = parseFloat(normalizedValue);
                             
                             if (!isNaN(parsedValue)) {
@@ -1292,7 +1485,6 @@
                                     minimumFractionDigits: 2,
                                     maximumFractionDigits: 2 
                                 });
-                                console.log(`Valor formateado: ${displayValue}`);
                             }
                         }
                     } catch (e) {
@@ -1300,8 +1492,6 @@
                         // Mantener el valor original si hay error
                     }
                 }
-                
-                console.log(`Añadiendo campo a la interfaz: ${key}=${displayValue}`);
                 
                 const verificationStatus = isVerified 
                     ? '<span class="verification-status auto-verified"><i class="fas fa-check-circle"></i>Verificado automáticamente</span>'
@@ -1334,9 +1524,14 @@
                                                           tipoEndosoElement.textContent === "PÓLIZA PROTGT TEMPORAL MN" ||
                                                           tipoEndosoElement.textContent === "PÓLIZA VIDA PROTGT");
                 
+                const isSaludFamiliar = tipoEndosoElement && (
+                    tipoEndosoElement.textContent === "PÓLIZA DE GASTOS MÉDICOS MAYORES FAMILIAR" ||
+                    tipoEndosoElement.textContent === "PÓLIZA DE GASTOS MÉDICOS MAYORES FAMILIAR (VARIANTE F)"
+                );
+                
                 // Obtener datos de la póliza si aplica
                 let polizaData = null;
-                if (isPolizaVida && pdfItem && pdfItem.hasAttribute('data-poliza-data')) {
+                if ((isPolizaVida || isSaludFamiliar) && pdfItem && pdfItem.hasAttribute('data-poliza-data')) {
                     try {
                         polizaData = JSON.parse(pdfItem.getAttribute('data-poliza-data'));
                     } catch (e) {
@@ -1455,6 +1650,146 @@
                             modalData.appendChild(noDataItem);
                         }
                     }
+                } else if (isSaludFamiliar) {
+                    // Para pólizas de salud familiar, mostrar los datos completos
+                    if (modalTitle) modalTitle.textContent = "Datos Completos de la Póliza de Gastos Médicos";
+                    
+                    // Limpiar el contenedor
+                    if (modalData) {
+                        modalData.innerHTML = '<h3 class="modal-data-title">Datos Completos de la Póliza de Gastos Médicos</h3>';
+                        
+                        // Mostrar primero los campos financieros específicos de interés
+                        const camposPrioritarios = [
+                            "Prima Neta",
+                            "Prima anual total",
+                            "I.V.A.",
+                            "Prima base I.V.A.",
+                            "Gastos de Expedición",
+                            "Descuento familiar",
+                            "Cesión de Comisión",
+                            "Recargo por pago fraccionado",
+                            "Derecho de póliza"
+                        ];
+                        
+                        // Si tenemos datos directos de la póliza
+                        if (polizaData) {
+                            console.log("Datos de póliza de salud familiar para modal:", polizaData);
+                            
+                            // Primero mostrar campos prioritarios
+                            camposPrioritarios.forEach(campo => {
+                                if (campo in polizaData && polizaData[campo] !== "0" && polizaData[campo] !== "0.00") {
+                                    let valor = polizaData[campo];
+                                    
+                                    // Formatear valores numéricos
+                                    try {
+                                        const numVal = parseFloat(String(valor).replace(',', ''));
+                                        if (!isNaN(numVal)) {
+                                            valor = numVal.toLocaleString('es-MX', { 
+                                                style: 'currency', 
+                                                currency: 'MXN',
+                                                minimumFractionDigits: 2,
+                                                maximumFractionDigits: 2 
+                                            });
+                                        }
+                                    } catch (e) {
+                                        console.error(`Error al formatear ${campo}: ${valor}`, e);
+                                    }
+                                    
+                                    const dataItem = document.createElement('div');
+                                    dataItem.className = 'modal-data-item';
+                                    dataItem.innerHTML = `
+                                        <div class="modal-data-label">${campo}</div>
+                                        <div class="modal-data-value">${valor}</div>
+                                    `;
+                                    modalData.appendChild(dataItem);
+                                }
+                            });
+                            
+                            // Luego agregar el resto de los campos
+                            for (const [key, value] of Object.entries(polizaData)) {
+                                // Saltar campos ya mostrados o nulos
+                                if (value === null || value === undefined || 
+                                    key === "Coberturas adicionales con costo" || 
+                                    camposPrioritarios.includes(key)) continue;
+                                
+                                let displayValue = value === "0" ? "No disponible" : value;
+                                
+                                // Formatear valores monetarios si es necesario
+                                if (value !== "0" && (
+                                    key.includes("Prima") || key.includes("precio") || 
+                                    key.includes("Precio") || key.includes("costo") || 
+                                    key.includes("Costo") || key.includes("Suma")
+                                )) {
+                                    try {
+                                        // Verificar si el valor ya tiene formato de moneda
+                                        if (typeof value === 'string') {
+                                            // Elimina cualquier caracter no numérico excepto punto y coma
+                                            const numValue = value.replace(/[^\d,.]/g, '');
+                                            if (numValue) {
+                                                // Reemplaza coma por punto para la conversión numérica
+                                                const normalizedValue = numValue.includes(',') && !numValue.includes('.') ? 
+                                                    numValue.replace(',', '.') : numValue.replace(',', '');
+                                                
+                                                const parsedValue = parseFloat(normalizedValue);
+                                                
+                                                if (!isNaN(parsedValue)) {
+                                                    displayValue = parsedValue.toLocaleString('es-MX', { 
+                                                        style: 'currency', 
+                                                        currency: 'MXN',
+                                                        minimumFractionDigits: 2,
+                                                        maximumFractionDigits: 2 
+                                                    });
+                                                }
+                                            }
+                                        }
+                                    } catch (e) {
+                                        console.error(`Error al formatear valor monetario en modal: ${key}=${value}`, e);
+                                    }
+                                }
+                                
+                                const dataItem = document.createElement('div');
+                                dataItem.className = 'modal-data-item';
+                                dataItem.innerHTML = `
+                                    <div class="modal-data-label">${key}</div>
+                                    <div class="modal-data-value">${displayValue}</div>
+                                `;
+                                modalData.appendChild(dataItem);
+                            }
+                        } else {
+                            // Si no tenemos datos directos, clonar del DOM
+                            const polizaDataSection = pdfItem ? pdfItem.querySelector('.pdf-data-section') : null;
+                            if (polizaDataSection) {
+                                const polizaItems = polizaDataSection.querySelectorAll('.data-item');
+                                
+                                polizaItems.forEach(item => {
+                                    const clonedItem = document.createElement('div');
+                                    clonedItem.className = 'modal-data-item';
+                                    
+                                    const label = item.querySelector('.data-label');
+                                    const value = item.querySelector('.data-value');
+                                    
+                                    if (label && value) {
+                                        clonedItem.innerHTML = `
+                                            <div class="modal-data-label">${label.textContent}</div>
+                                            <div class="modal-data-value">${value.textContent}</div>
+                                        `;
+                                        modalData.appendChild(clonedItem);
+                                    }
+                                });
+                            }
+                        }
+                        
+                        // Si no hay datos en el modal, mostrar mensaje
+                        if (modalData.children.length <= 1) {
+                            const noDataItem = document.createElement('div');
+                            noDataItem.className = 'modal-data-item';
+                            noDataItem.innerHTML = `
+                                <div class="modal-data-label">Información</div>
+                                <div class="modal-data-value">No hay datos disponibles para esta póliza</div>
+                            `;
+                            modalData.appendChild(noDataItem);
+                        }
+                    }
                 } else {
                     // Para endosos tipo A, mostrar datos financieros normales
                     if (modalTitle) modalTitle.textContent = "Datos Financieros";
@@ -1473,7 +1808,11 @@
                 'iva': 'I.V.A.',
                 'total': 'Precio total',
                 'prima': 'Prima neta',
-                'tasa': 'Tasa de financiamiento'
+                'tasa': 'Tasa de financiamiento',
+                'descuento': 'Descuento familiar',
+                'cesion': 'Cesión de Comisión',
+                'recargo': 'Recargo por pago fraccionado',
+                'prima_base_iva': 'Prima base I.V.A.'
             };
 
             // Limpiamos el contenedor de datos
@@ -1481,18 +1820,56 @@
             if (modalData) {
                 modalData.innerHTML = '<h3 class="modal-data-title">Datos Financieros</h3>';
                 
+                // Campos estándar que siempre deberían mostrarse
+                const standardFields = ['Prima neta', 'Gastos por expedición', 'I.V.A.', 'Precio total', 'Tasa de financiamiento'];
+                
+                // Campos específicos de pólizas de salud familiar
+                const saludFamiliarFields = ['Descuento familiar', 'Cesión de Comisión', 'Recargo por pago fraccionado', 'Prima base I.V.A.'];
+                
+                // Determinar si estamos mostrando una póliza de salud familiar
+                const hasSaludFamiliarFields = saludFamiliarFields.some(field => data[field] && data[field] !== '0' && data[field] !== '0.00');
+                
                 // Recreamos los elementos para los datos financieros
                 Object.entries(mappings).forEach(([field, key]) => {
-                    const valueToDisplay = data[key] || (field === 'tasa' ? '0.00%' : '$0.00');
-                    
-                    const itemDiv = document.createElement('div');
-                    itemDiv.className = 'modal-data-item';
-                    itemDiv.innerHTML = `
-                        <div class="modal-data-label">${key}</div>
-                        <div class="modal-data-value" data-field="${field}">${valueToDisplay}</div>
-                    `;
-                    
-                    modalData.appendChild(itemDiv);
+                    // Mostrar campos estándar o campos de salud familiar si corresponde
+                    if (standardFields.includes(key) || (hasSaludFamiliarFields && saludFamiliarFields.includes(key) && data[key])) {
+                        let valueToDisplay;
+                        
+                        if (field === 'tasa') {
+                            valueToDisplay = data[key] || '0.00%';
+                            if (!valueToDisplay.endsWith('%')) {
+                                valueToDisplay = parseFloat(valueToDisplay).toFixed(2) + '%';
+                            }
+                        } else {
+                            // Para valores numéricos, asegurar que se muestren en formato moneda
+                            const valor = data[key] || '0.00';
+                            try {
+                                const numVal = parseFloat(String(valor).replace(',', ''));
+                                if (!isNaN(numVal)) {
+                                    valueToDisplay = numVal.toLocaleString('es-MX', { 
+                                        style: 'currency', 
+                                        currency: 'MXN',
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2 
+                                    });
+                                } else {
+                                    valueToDisplay = '$0.00';
+                                }
+                            } catch (e) {
+                                console.error(`Error al formatear ${key}: ${valor}`, e);
+                                valueToDisplay = '$0.00';
+                            }
+                        }
+                        
+                        const itemDiv = document.createElement('div');
+                        itemDiv.className = 'modal-data-item';
+                        itemDiv.innerHTML = `
+                            <div class="modal-data-label">${key}</div>
+                            <div class="modal-data-value" data-field="${field}">${valueToDisplay}</div>
+                        `;
+                        
+                        modalData.appendChild(itemDiv);
+                    }
                 });
             }
         }

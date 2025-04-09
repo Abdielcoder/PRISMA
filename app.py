@@ -145,7 +145,8 @@ def upload_file():
             "Periodo de pago de siniestro": "No disponible", "Plazo de pago": "No disponible",
             "Prima Neta": "0.00", "Prima anual total": "0.00", "Prima mensual": "0.00", 
             "R.F.C.": "No disponible", "Teléfono": "No disponible", "Url": "No disponible", 
-            "Suma asegurada": "0.00", "Moneda": "No disponible"
+            "Suma asegurada": "0.00", "Moneda": "No disponible",
+            "Descuento familiar": "0.00", "Cesión de Comisión": "0.00", "Recargo por pago fraccionado": "0.00"
             # Añadir aquí cualquier otro campo que pueda existir en algún formato
         }
 
@@ -155,7 +156,10 @@ def upload_file():
             "I.V.A.": "0.00",
             "Precio total": "0.00",
             "Tasa de financiamiento": "0.00",
-            "Prima mensual": "0.00"
+            "Prima mensual": "0.00",
+            "Descuento familiar": "0.00",
+            "Cesión de Comisión": "0.00",
+            "Recargo por pago fraccionado": "0.00"
         }
 
         # **2. Rellenar datos desde el resultado del procesamiento**
@@ -188,6 +192,13 @@ def upload_file():
              respuesta_financiera_base["Precio total"] = datos_financieros_extraidos.get("precio_total", "0.00")
              respuesta_financiera_base["Tasa de financiamiento"] = datos_financieros_extraidos.get("tasa_financiamiento", "0.00")
              respuesta_financiera_base["Prima mensual"] = datos_financieros_extraidos.get("prima_mensual", "0.00")
+             # Agregar mapeo para los nuevos campos de pólizas de salud familiar
+             respuesta_financiera_base["Descuento familiar"] = datos_financieros_extraidos.get("descuento_familiar", "0.00")
+             respuesta_financiera_base["Cesión de Comisión"] = datos_financieros_extraidos.get("cesion_comision", "0.00")
+             respuesta_financiera_base["Recargo por pago fraccionado"] = datos_financieros_extraidos.get("recargo_pago_fraccionado", "0.00")
+             
+             # Registrar los datos financieros para depuración
+             logger.info(f"Datos financieros mapeados: {json.dumps(respuesta_financiera_base, ensure_ascii=False, indent=2)}")
 
         # **3. Formatear valores numéricos en ambas estructuras**
         campos_numericos_poliza = ["Prima Neta", "Prima anual total", "Prima mensual", "Suma asegurada", "I.V.A."]
@@ -228,6 +239,9 @@ def upload_file():
         elif resultado.get("tipo_documento") == "PROTGT_PYME":
             respuesta_financiera_base["ramo"] = "PYME"
             respuesta_financiera_base["tipo_endoso"] = resultado.get("descripcion") or "PLAN PROTEGE PYME"
+        elif resultado.get("tipo_documento") == "SALUD_FAMILIAR":
+            respuesta_financiera_base["ramo"] = "SALUD"
+            respuesta_financiera_base["tipo_endoso"] = resultado.get("descripcion") or "PÓLIZA DE GASTOS MÉDICOS FAMILIAR"
         else:
             # Para cualquier otro tipo de documento, usar valores genéricos
             respuesta_financiera_base["ramo"] = "OTRO"
@@ -245,7 +259,19 @@ def upload_file():
             "description": resultado.get("descripcion", "")              # Mantener para info
         }
         
-        logger.debug(f"Respuesta final a jsonify: {json.dumps(respuesta, indent=2)}") 
+        # Para documentos de salud familiar, asegurar que los campos especiales estén incluidos en la respuesta
+        if resultado.get("tipo_documento") == "SALUD_FAMILIAR":
+            logger.info("Preparando respuesta para documento de salud familiar")
+            logger.info(f"Descuento familiar: {respuesta_poliza_base['Descuento familiar']}")
+            logger.info(f"Cesión de Comisión: {respuesta_poliza_base['Cesión de Comisión']}")
+            logger.info(f"Recargo por pago fraccionado: {respuesta_poliza_base['Recargo por pago fraccionado']}")
+            
+            # Asegurar que estos valores también estén en la respuesta financiera
+            respuesta["financial_data"]["Descuento familiar"] = respuesta_poliza_base.get("Descuento familiar", "0.00")
+            respuesta["financial_data"]["Cesión de Comisión"] = respuesta_poliza_base.get("Cesión de Comisión", "0.00")
+            respuesta["financial_data"]["Recargo por pago fraccionado"] = respuesta_poliza_base.get("Recargo por pago fraccionado", "0.00")
+        
+        logger.debug(f"Respuesta final a jsonify: {json.dumps(respuesta, ensure_ascii=False, indent=2)}")
         return jsonify(respuesta)
         
     except Exception as e:
@@ -305,7 +331,7 @@ def validate_file():
         # Agregar datos específicos según el tipo de documento
         if result.get('tipo_documento') == 'ENDOSO_A':
             response['tipo_endoso'] = result.get('tipo_endoso', '')
-        elif result.get('tipo_documento') in ['POLIZA_VIDA', 'POLIZA_ALIADOS_PPR', 'POLIZA_PROTGT_TEMPORAL_MN', 'POLIZA_VIDA_PROTGT', 'PROTECCION_EFECTIVA', 'PROTGT_PYME']:
+        elif result.get('tipo_documento') in ['POLIZA_VIDA', 'POLIZA_ALIADOS_PPR', 'POLIZA_PROTGT_TEMPORAL_MN', 'POLIZA_VIDA_PROTGT', 'PROTECCION_EFECTIVA', 'PROTGT_PYME', 'SALUD_FAMILIAR']:
             response['datos_completos'] = result.get('datos_completos', {})
             
             # Generar URL markdown
