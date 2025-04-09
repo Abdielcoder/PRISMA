@@ -72,7 +72,7 @@ def extraer_datos_poliza_aliados_ppr(pdf_path: str) -> Dict:
     logging.info(f"Procesando archivo Aliados+ PPR: {pdf_path}")
     resultado = {
         "Clave Agente": "0", "Coaseguro": "0", "Cobertura Básica": "0",
-        "Cobertura Nacional": "0", "Coberturas adicionales con costo": "0",
+        "Cobertura Nacional": "0", 
         "Código Postal": "0", "Deducible": "0", "Deducible Cero por Accidente": "0",
         "Domicilio del asegurado": "0", "Domicilio del contratante": "0",
         "Fecha de emisión": "0", "Fecha de fin de vigencia": "0",
@@ -119,7 +119,6 @@ def extraer_datos_poliza_aliados_ppr(pdf_path: str) -> Dict:
             "Nombre del asegurado titular": r'DATOS DEL ASEGURADO\s+Nombre:\s+([A-ZÁ-Ú\s,.]+?)(?=\s+Fecha|$)',
             "Clave Agente": r'Agente:\s+(\d+)',
             "Nombre del agente": r'Agente:\s+\d+\s+([A-ZÁ-Ú\s,.]+?)(?=\s+Promotor:|$)',
-            "Coberturas adicionales con costo": r'(?:PAI|Pago adicional).*?(\d{1,3}(?:,\d{3})*\.\d{2})',
             "Suma asegurada": r'SUMA\s+ASEGURADA\s+(\d{1,3}(?:,\d{3})*\.\d{2})|Básica\s+\d+\s+(?:años|AÑOS)\s+(\d{1,3}(?:,\d{3})*\.\d{2})',
             "Cobertura Básica": r'Básica\s+(\d+\s+AÑOS)|Fallecimiento\s+(\d+\s+AÑOS)',
             "Código Postal": r'C\.P\.\s+(\d{5})|,\s+(\d{5}),',
@@ -151,29 +150,6 @@ def extraer_datos_poliza_aliados_ppr(pdf_path: str) -> Dict:
                     # Para valores numéricos, aplicamos la normalización
                     valor = match.group(1).strip()
                     resultado[campo] = normalizar_numero(valor)
-                    logging.info(f"Encontrado {campo}: {resultado[campo]}")
-                elif campo == "Coberturas adicionales con costo":
-                    # Extraer todas las coberturas y concatenarlas
-                    valor = match.group(1).strip()
-                    # Limpiar y formatear texto de coberturas
-                    valor = re.sub(r'\s+', ' ', valor)
-                    resultado[campo] = valor
-                    logging.info(f"Encontradas coberturas: {valor}")
-                elif campo == "Nombre del contratante" or campo == "Nombre del asegurado titular" or campo == "Nombre del agente":
-                    # Para nombres, limpiar valores
-                    valor = match.group(1).strip()
-                    # Limpiar texto adicional que pueda aparecer después del nombre
-                    valor = re.sub(r'\s+(TIPO DE PLAN|SOLICITUD|Fraccionado:).*$', '', valor)
-                    resultado[campo] = valor
-                    logging.info(f"Encontrado {campo}: {resultado[campo]}")
-                elif campo == "Número de póliza":
-                    # Intentar extraer el número de póliza específicamente
-                    poliza_matches = re.findall(r'(\d{7}H)', texto_completo)
-                    if poliza_matches:
-                        resultado[campo] = poliza_matches[0]
-                    else:
-                        # Si no encuentra el formato específico, usar el valor capturado
-                        resultado[campo] = match.group(1).strip()
                     logging.info(f"Encontrado {campo}: {resultado[campo]}")
                 elif campo == "Código Postal":
                     # Extraer código postal que puede estar en diferentes grupos
@@ -307,22 +283,6 @@ def extraer_datos_poliza_aliados_ppr(pdf_path: str) -> Dict:
             except Exception as e:
                 logging.error(f"Error al calcular prima mensual: {str(e)}")
 
-        # Añadir en el post-procesamiento para coberturas
-        if resultado["Coberturas adicionales con costo"] == "0":
-            coberturas_match = re.search(r'(?:PAI|Pago Adicional|Exención).*?(?:AÑOS|Permanente).*?([\d,\.]+)', texto_completo)
-            if coberturas_match:
-                valor = coberturas_match.group(1).strip()
-                resultado["Coberturas adicionales con costo"] = valor
-                logging.info(f"Coberturas adicionales encontradas alternativo: {valor}")
-
-        # Para la suma asegurada
-        if resultado["Suma asegurada"] == "0":
-            # Buscar en contextos específicos de la póliza
-            suma_match = re.search(r'(?:SUMA\s+ASEGURADA|PRIMA ANUAL)[\s\n]*(\d{1,3}(?:,\d{3})*\.\d{2})', texto_completo, re.MULTILINE)
-            if suma_match:
-                resultado["Suma asegurada"] = normalizar_numero(suma_match.group(1))
-                logging.info(f"Suma asegurada encontrada (contexto específico): {resultado['Suma asegurada']}")
-
         # Sistema de patrones alternativos para campos críticos
         patrones_alternativos = {
             "Suma asegurada": [
@@ -332,10 +292,6 @@ def extraer_datos_poliza_aliados_ppr(pdf_path: str) -> Dict:
             "Cobertura Básica": [
                 r'(?:Cobertura básica|COBERTURA BÁSICA).*?(\d+\s+(?:años|AÑOS))',
                 r'Plazo.*?Seguro.*?(\d+\s+(?:años|AÑOS))'
-            ],
-            "Coberturas adicionales con costo": [
-                r'(?:Exención|Invalidez).*?(\d{1,3}(?:,\d{3})*\.\d{2})',
-                r'(?:PAI|Pago Adic).*?(\d{1,3}(?:,\d{3})*\.\d{2})'
             ]
         }
 
@@ -401,7 +357,6 @@ def generar_markdown(datos: Dict, ruta_salida: str = "aliados_ppr.md") -> None:
             "Prima Anual Total": datos["Prima anual total"] if datos["Prima anual total"] != "0" else "Por determinar",
             "Prima Mensual": datos["Prima mensual"] if datos["Prima mensual"] != "0" else "Por determinar",
             "Cobertura Básica": datos["Cobertura Básica"] if datos["Cobertura Básica"] != "0" else "Por determinar",
-            "Coberturas Adicionales con Costo": datos["Coberturas adicionales con costo"] if datos["Coberturas adicionales con costo"] != "0" else "Por determinar",
             "Frecuencia de Pago": datos["Frecuencia de pago"] if datos["Frecuencia de pago"] != "0" else "Por determinar",
             "Periodo de Pago de Siniestro": datos["Periodo de pago de siniestro"] if datos["Periodo de pago de siniestro"] != "0" else "Por determinar",
             "Suma Asegurada": datos["Suma asegurada"] if datos["Suma asegurada"] != "0" else "Por determinar",
@@ -469,7 +424,7 @@ def extraer_datos_desde_markdown(ruta_md: str) -> Dict:
     
     resultado = {
         "Clave Agente": "0", "Coaseguro": "0", "Cobertura Básica": "0",
-        "Cobertura Nacional": "0", "Coberturas adicionales con costo": "0",
+        "Cobertura Nacional": "0", 
         "Código Postal": "0", "Deducible": "0", "Deducible Cero por Accidente": "0",
         "Domicilio del asegurado": "0", "Domicilio del contratante": "0",
         "Fecha de emisión": "0", "Fecha de fin de vigencia": "0",
@@ -501,7 +456,6 @@ def extraer_datos_desde_markdown(ruta_md: str) -> Dict:
         "Prima Anual Total": "Prima anual total",
         "Prima Mensual": "Prima mensual",
         "Cobertura Básica": "Cobertura Básica",
-        "Coberturas Adicionales con Costo": "Coberturas adicionales con costo",
         "Frecuencia de Pago": "Frecuencia de pago",
         "Moneda": "Moneda", # Mapear Moneda
         "Periodo de Pago de Siniestro": "Periodo de pago de siniestro",

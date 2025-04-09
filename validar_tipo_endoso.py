@@ -10,6 +10,9 @@ from data_ia_general_vida_individual import procesar_archivo as procesar_archivo
 from data_ia_general_protgt_ordinario import procesar_archivo as procesar_archivo_protgt_ordinario
 from data_ia_general_protgt_ppr import procesar_archivo as procesar_archivo_aliados_ppr
 from data_ia_general_protgt_mn import procesar_archivo as procesar_archivo_protgt_temporal_mn
+from data_ia_general_vida_protgt import procesar_archivo as procesar_archivo_vida_protgt
+from data_ia_general_proteccion_efectiva import procesar_archivo as procesar_archivo_proteccion_efectiva
+from data_ia_general_protgt_pyme import procesar_archivo as procesar_archivo_protgt_pyme
 
 # Configuración de logging
 logging.basicConfig(
@@ -48,7 +51,8 @@ def detect_document_type(text: str) -> str:
         
     Returns:
         str: Tipo de documento detectado ('ENDOSO_A', 'POLIZA_VIDA', 'POLIZA_VIDA_INDIVIDUAL', 
-                                         'PROTEGETE_ORDINARIO', 'ALIADOS_PPR', 'PROTGT_TEMPORAL_MN', 'DESCONOCIDO')
+                                         'PROTEGETE_ORDINARIO', 'ALIADOS_PPR', 'PROTGT_TEMPORAL_MN', 
+                                         'VIDA_PROTGT', 'PROTECCION_EFECTIVA', 'PROTGT_PYME', 'DESCONOCIDO')
     """
     # Normalizar el texto
     text = text.lower()
@@ -70,6 +74,15 @@ def detect_document_type(text: str) -> str:
         r"seguro.*aliados"
     ]
     
+    # Patrones para identificar VIDA PROTGT
+    patrones_vida_protgt = [
+        r"vida protgt",
+        r"protgt cobertura",
+        r"cobertura conyugal",
+        r"caratula de p[óo]liza.*vida\s*protgt",
+        r"p[óo]liza.*vida\s*protgt"
+    ]
+    
     # Patrones para identificar Protegete Temporal MN
     patrones_protgt_temporal_mn = [
         r"vida protgt temporal mn",
@@ -77,6 +90,26 @@ def detect_document_type(text: str) -> str:
         r"temporal mn",
         r"carátula de póliza.*temporal mn",
         r"vida protgt temporal"
+    ]
+    
+    # Patrones para identificar Protección Efectiva
+    patrones_proteccion_efectiva = [
+        r"protección efectiva",
+        r"carátula de póliza.*protección efectiva",
+        r"temporal a 1 año",
+        r"proteccion efectiva",
+        r"caratula de poliza.*proteccion efectiva",
+        r"hoja 1 de 2.*protección efectiva"
+    ]
+    
+    # Patrones para identificar Plan Protege PYME
+    patrones_protgt_pyme = [
+        r"plan protege pyme",
+        r"carátula de póliza.*plan protege pyme",
+        r"protege pyme",
+        r"grupo empresarial",
+        r"características del grupo asegurado",
+        r"regla para determinar la suma asegurada"
     ]
     
     # Patrones para identificar Protegete Ordinario
@@ -127,31 +160,49 @@ def detect_document_type(text: str) -> str:
             logger.info(f"Detectada póliza Aliados+ PPR con patrón: {patron}")
             return "ALIADOS_PPR"
             
-    # 2. Buscar patrones de Protegete Temporal MN
+    # 2. Buscar patrones de VIDA PROTGT
+    for patron in patrones_vida_protgt:
+        if re.search(patron, text):
+            logger.info(f"Detectada póliza VIDA PROTGT con patrón: {patron}")
+            return "VIDA_PROTGT"
+            
+    # 3. Buscar patrones de Protegete Temporal MN
     for patron in patrones_protgt_temporal_mn:
         if re.search(patron, text):
             logger.info(f"Detectada póliza Protegete Temporal MN con patrón: {patron}")
             return "PROTGT_TEMPORAL_MN"
             
-    # 3. Buscar patrones de Protegete Ordinario
+    # 4. Buscar patrones de Protección Efectiva
+    for patron in patrones_proteccion_efectiva:
+        if re.search(patron, text):
+            logger.info(f"Detectada póliza Protección Efectiva con patrón: {patron}")
+            return "PROTECCION_EFECTIVA"
+    
+    # 5. Buscar patrones de Plan Protege PYME
+    for patron in patrones_protgt_pyme:
+        if re.search(patron, text):
+            logger.info(f"Detectada póliza Plan Protege PYME con patrón: {patron}")
+            return "PROTGT_PYME"
+            
+    # 6. Buscar patrones de Protegete Ordinario
     for patron in patrones_protegete_ordinario:
         if re.search(patron, text):
             logger.info(f"Detectada póliza Protegete Ordinario con patrón: {patron}")
             return "PROTEGETE_ORDINARIO"
             
-    # 4. Buscar patrones de póliza de vida individual
+    # 7. Buscar patrones de póliza de vida individual
     for patron in patrones_vida_individual:
         if re.search(patron, text):
             logger.info(f"Detectada póliza de vida individual con patrón: {patron}")
             return "POLIZA_VIDA_INDIVIDUAL"
             
-    # 5. Buscar patrones de póliza de vida (genérico)
+    # 8. Buscar patrones de póliza de vida (genérico)
     for patron in patrones_vida:
         if re.search(patron, text):
             logger.info(f"Detectada póliza de vida con patrón: {patron}")
             return "POLIZA_VIDA"
             
-    # 6. Buscar patrones de endoso tipo A (al final)
+    # 9. Buscar patrones de endoso tipo A (al final)
     for patron in patrones_endoso_a:
         if re.search(patron, text):
             logger.info(f"Detectado endoso tipo A con patrón: {patron}")
@@ -395,6 +446,102 @@ def validate_endoso(pdf_path: str) -> Dict:
             else:
                 logger.error(f"Se detectó póliza de vida para {pdf_path}, pero no se pudieron extraer los datos.")
                 return {"error": "Se detectó póliza de vida, pero no se pudieron extraer los datos"}
+        
+        elif tipo_documento == "VIDA_PROTGT":
+            logger.info(f"Póliza VIDA PROTGT detectada para {pdf_path}. Procediendo a extraer datos.")
+            
+            # Crear directorio de salida temporal si no existe
+            output_dir = os.path.join(os.path.dirname(pdf_path), "output")
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Procesar el archivo y obtener datos con el script para pólizas VIDA PROTGT
+            datos_vida_protgt = procesar_archivo_vida_protgt(pdf_path, output_dir)
+            
+            if datos_vida_protgt:
+                logger.info(f"Datos de póliza VIDA PROTGT extraídos exitosamente para {pdf_path}.")
+                # Convertir los datos a formato financiero esperado por el frontend
+                datos_financieros = {
+                    "prima_neta": datos_vida_protgt.get("Prima Neta", "0"),
+                    "gastos_expedicion": "0",  # No aplica para este tipo de pólizas
+                    "iva": datos_vida_protgt.get("I.V.A.", "0"),
+                    "precio_total": datos_vida_protgt.get("Prima anual total", "0"),
+                    "tasa_financiamiento": "0",  # No aplica para este tipo de pólizas
+                    "prima_mensual": datos_vida_protgt.get("Prima mensual", "0")
+                }
+                
+                return {
+                    "tipo_documento": "POLIZA_VIDA_PROTGT",
+                    "descripcion": "PÓLIZA VIDA PROTGT",
+                    "datos_financieros": datos_financieros,
+                    "datos_completos": datos_vida_protgt
+                }
+            else:
+                logger.error(f"Se detectó póliza VIDA PROTGT para {pdf_path}, pero no se pudieron extraer los datos.")
+                return {"error": "Se detectó póliza VIDA PROTGT, pero no se pudieron extraer los datos"}
+        
+        elif tipo_documento == "PROTECCION_EFECTIVA":
+            logger.info(f"Póliza Protección Efectiva detectada para {pdf_path}. Procediendo a extraer datos.")
+            
+            # Crear directorio de salida temporal si no existe
+            output_dir = os.path.join(os.path.dirname(pdf_path), "output")
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Procesar el archivo y obtener datos con el script para pólizas Protección Efectiva
+            datos_proteccion_efectiva = procesar_archivo_proteccion_efectiva(pdf_path, output_dir)
+            
+            if datos_proteccion_efectiva:
+                logger.info(f"Datos de póliza Protección Efectiva extraídos exitosamente para {pdf_path}.")
+                # Convertir los datos a formato financiero esperado por el frontend
+                datos_financieros = {
+                    "prima_neta": datos_proteccion_efectiva.get("Prima Neta", "0"),
+                    "gastos_expedicion": "0",  # No aplica para este tipo de pólizas
+                    "iva": datos_proteccion_efectiva.get("I.V.A.", "0"),
+                    "precio_total": datos_proteccion_efectiva.get("Prima anual total", "0"),
+                    "tasa_financiamiento": "0",  # No aplica para este tipo de pólizas
+                    "prima_mensual": datos_proteccion_efectiva.get("Prima mensual", "0")
+                }
+                
+                return {
+                    "tipo_documento": "POLIZA_VIDA",
+                    "descripcion": "PÓLIZA PROTECCION EFECTIVA",
+                    "datos_financieros": datos_financieros,
+                    "datos_completos": datos_proteccion_efectiva
+                }
+            else:
+                logger.error(f"Se detectó póliza Protección Efectiva para {pdf_path}, pero no se pudieron extraer los datos.")
+                return {"error": "Se detectó póliza Protección Efectiva, pero no se pudieron extraer los datos"}
+        
+        elif tipo_documento == "PROTGT_PYME":
+            logger.info(f"Póliza Plan Protege PYME detectada para {pdf_path}. Procediendo a extraer datos.")
+            
+            # Crear directorio de salida temporal si no existe
+            output_dir = os.path.join(os.path.dirname(pdf_path), "output")
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Procesar el archivo y obtener datos con el script para pólizas Plan Protege PYME
+            datos_protgt_pyme = procesar_archivo_protgt_pyme(pdf_path, output_dir)
+            
+            if datos_protgt_pyme:
+                logger.info(f"Datos de póliza Plan Protege PYME extraídos exitosamente para {pdf_path}.")
+                # Convertir los datos a formato financiero esperado por el frontend
+                datos_financieros = {
+                    "prima_neta": datos_protgt_pyme.get("Prima Neta", "0"),
+                    "gastos_expedicion": "0",  # No aplica para este tipo de pólizas
+                    "iva": datos_protgt_pyme.get("I.V.A.", "0"),
+                    "precio_total": datos_protgt_pyme.get("Prima anual total", "0"),
+                    "tasa_financiamiento": "0",  # No aplica para este tipo de pólizas
+                    "prima_mensual": datos_protgt_pyme.get("Prima mensual", "0")
+                }
+                
+                return {
+                    "tipo_documento": "POLIZA_VIDA",
+                    "descripcion": "PÓLIZA PLAN PROTEGE PYME",
+                    "datos_financieros": datos_financieros,
+                    "datos_completos": datos_protgt_pyme
+                }
+            else:
+                logger.error(f"Se detectó póliza Plan Protege PYME para {pdf_path}, pero no se pudieron extraer los datos.")
+                return {"error": "Se detectó póliza Plan Protege PYME, pero no se pudieron extraer los datos"}
         
         else:
             logger.warning(f"Tipo de documento no soportado o desconocido para {pdf_path}")

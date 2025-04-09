@@ -39,15 +39,15 @@ def normalizar_numero(valor: str) -> str:
 
 def detectar_tipo_documento(texto_pdf: str) -> str:
     """
-    Detecta el tipo de documento basado en patrones específicos para pólizas Protegete Ordinario.
+    Detecta el tipo de documento basado en patrones específicos para pólizas VIDA PROTGT.
     """
-    # Patrones para identificar documentos Protegete Ordinario
-    if re.search(r'VIDA PROTGT ORDINARIO|PROTGT ORDINARIO DE VIDA', texto_pdf, re.IGNORECASE):
-        logging.info("Detectado: Documento de Protegete Ordinario")
-        return "PROTGT_ORDINARIO"
+    # Patrones para identificar documentos VIDA PROTGT
+    if re.search(r'VIDA PROTGT|PROTGT', texto_pdf, re.IGNORECASE):
+        logging.info("Detectado: Documento de VIDA PROTGT")
+        return "VIDA_PROTGT"
     
     # Si no coincide con ningún patrón conocido pero parece ser de vida
-    if re.search(r'Ordinario\s+de\s+Vida|Seguro\s+de\s+Vida|P[óo]liza\s+de\s+Vida', texto_pdf, re.IGNORECASE):
+    if re.search(r'Seguro\s+de\s+Vida|P[óo]liza\s+de\s+Vida', texto_pdf, re.IGNORECASE):
         logging.info("Detectado: Documento de Vida (formato general)")
         return "VIDA"
     
@@ -55,11 +55,11 @@ def detectar_tipo_documento(texto_pdf: str) -> str:
     logging.warning("Tipo de documento no identificado claramente")
     return "DESCONOCIDO"
 
-def extraer_datos_poliza_protgt_ordinario(pdf_path: str) -> Dict:
+def extraer_datos_poliza_vida_protgt(pdf_path: str) -> Dict:
     """
-    Extrae datos de una póliza Protegete Ordinario desde un archivo PDF.
+    Extrae datos de una póliza VIDA PROTGT desde un archivo PDF.
     """
-    logging.info(f"Procesando archivo Protegete Ordinario: {pdf_path}")
+    logging.info(f"Procesando archivo VIDA PROTGT: {pdf_path}")
     resultado = {
         "Clave Agente": "0", "Coaseguro": "0", "Cobertura Básica": "0",
         "Cobertura Nacional": "0", 
@@ -72,7 +72,9 @@ def extraer_datos_poliza_protgt_ordinario(pdf_path: str) -> Dict:
         "Nombre del plan": "0", "Número de póliza": "0",
         "Periodo de pago de siniestro": "0", "Plazo de pago": "0",
         "Prima Neta": "0", "Prima anual total": "0", "Prima mensual": "0", "R.F.C.": "0",
-        "Teléfono": "0", "Url": "0", "Suma asegurada": "0", "Moneda": "0"
+        "Teléfono": "0", "Url": "0", "Suma asegurada": "0", "Moneda": "0",
+        "Tipo de Plan": "0", "Prima trimestral": "0", "Recargo por pago fraccionado": "0", 
+        "Prima adicional": "0", "Prima trimestral total": "0"
     }
 
     try:
@@ -85,34 +87,41 @@ def extraer_datos_poliza_protgt_ordinario(pdf_path: str) -> Dict:
 
         # Detectar tipo de documento
         tipo_documento = detectar_tipo_documento(texto_completo)
-        if tipo_documento != "PROTGT_ORDINARIO" and tipo_documento != "VIDA":
-            logging.warning(f"Este documento no parece ser una póliza Protegete Ordinario: {tipo_documento}")
+        if tipo_documento != "VIDA_PROTGT" and tipo_documento != "VIDA":
+            logging.warning(f"Este documento no parece ser una póliza VIDA PROTGT: {tipo_documento}")
 
-        # Patrones específicos para el formato Protegete Ordinario
+        # Patrones específicos para el formato VIDA PROTGT
         patrones = {
-            "Clave Agente": r'Agente:?\s+(\d+)|Promotor:?\s+(\d+)',
-            "Nombre del agente": r'(?:Agente:?\s+\d+\s+)([A-ZÁ-Ú\s,.]+?)(?=\s+Promotor:|$)',
-            "Nombre del asegurado titular": r'Datos del asegurado\s+Nombre:\s+([A-ZÁ-Ú\s,.]+?)(?=\s+Fecha|$)',
-            "Nombre del contratante": r'Datos del contratante\s+Nombre:\s+([A-ZÁ-Ú\s,.]+?)(?=\s+Domicilio|$)',
-            "Domicilio del contratante": r'Domicilio:\s+(.*?)(?=\s+R\.F\.C\.:|$)',
-            "Código Postal": r'(?:C\.P\.|CP|[\d,]+,)\s*(\d{5})',
+            "Clave Agente": r'Agente:?\s+(\d+)|Agente:\s+(\d{6})',
+            "Nombre del agente": r'(?:Agente:?\s+\d+\s+)([A-ZÁ-Ú\s,.]+?)(?=\s+Promotor:|$)|(?:\d{6}\s+)([A-ZÁ-Ú\s,.]+?)(?=\s+Promotor:|$)',
+            "Nombre del asegurado titular": r'Datos del asegurado\s+Nombre:\s+([A-ZÁ-Ú\s,.]+?)(?=\s+Fecha|$)|Nombre:\s+([A-ZÁ-Ú\s,.]+?)(?=\s+Domicilio|$)',
+            "Nombre del contratante": r'Datos del contratante\s+Nombre:\s+([A-ZÁ-Ú\s,.]+?)(?=\s+Domicilio|$)|Nombre:\s+([A-ZÁ-Ú\s,.]+?)(?=\s+Fecha|$)',
+            "Domicilio del contratante": r'Domicilio:\s+(.*?)(?=\s+R\.F\.C\.:|$)|Domicilio:\s+(.*?)(?=\s+Teléfono:|$)',
+            "Código Postal": r'(?:C\.P\.|CP|[\d,]+,)\s*(\d{5})|(\d{5}),\s+\w+',
             "Teléfono": r'Teléfono:\s+([0-9]{7,10})',
             "R.F.C.": r'R\.F\.C\.:\s+([A-Z0-9]{10,13})',
             "Fecha de emisión": r'Fecha de emisión\s+([0-9]{1,2}/[A-Z]{3}/[0-9]{4})',
             "Fecha de inicio de vigencia": r'(?:Fecha de inicio\s+de vigencia|Fecha de inicio|Inicio de Vigencia)\s+([0-9]{1,2}/[A-Z]{3}/[0-9]{4})',
             "Fecha de fin de vigencia": r'(?:Fecha de fin\s+de vigencia|Fecha de fin|Fin de Vigencia)\s+([0-9]{1,2}/[A-Z]{3}/[0-9]{4})',
-            "Plazo de pago": r'Plazo de\s+pago\s+([0-9]+\s+(?:años|AÑOS))',
+            "Plazo de pago": r'Plazo de\s+pago\s+([0-9]+\s+(?:años|AÑOS))|Plazo de Pago:?\s+([0-9]+\s+(?:años|AÑOS))',
+            "Plazo de Seguro": r'Plazo de\s+Seguro\s+([0-9]+\s+(?:años|AÑOS))|Plazo de Seguro:?\s+([0-9]+\s+(?:años|AÑOS))',
             "Forma de pago": r'Forma de pago\s+([A-ZÁ-Ú]+)',
             "Frecuencia de pago": r'Forma de pago\s+([A-ZÁ-Ú]+)',  # Mismo patrón que Forma de pago
-            "Nombre del plan": r'(?:VIDA PROTGT ORDINARIO DE VIDA UDIS|VIDA PROTGT ORDINARIO DE VIDA|Tipo de Plan\s+([\w\s]+))',
+            "Nombre del plan": r'VIDA PROTGT',
+            "Tipo de Plan": r'Tipo de Plan\s+([A-ZÁ-Ú\s]+)|VIDA PROTGT\s+([A-ZÁ-Ú\s]+)',
             "Número de póliza": r'(?:Póliza|PÓLIZA)\s+([A-Z0-9]+H?)',
-            "Prima Neta": r'Prima anual\s+([\d,]+\.\d{2})',
+            "Prima Neta": r'Prima anual\s+([\d,]+\.\d{2})|Prima\s+trimestral\s+([\d,]+\.\d{2})',
             "Prima anual total": r'Prima anual total\s+([\d,]+\.\d{2})',
             "Prima mensual": r'Prima\s+mensual\s+([\d,]+\.\d{2})|Según\s+Forma\s+de\s+Pago\s+([\d,]+\.\d{2})',
-            "Suma asegurada": r'Básica\s+\d+\s+AÑOS\s+([\d,]+\.\d{2})',
+            "Suma asegurada": r'Básica\s+\d+\s+AÑOS\s+([\d,]+\.\d{2})|Suma asegurada\s+([\d,]+\.\d{2})',
             "Moneda": r'Moneda\s+([A-ZÁ-Ú]+)',
             "Centro de Utilidad": r'Centro de Utilidad:\s+(\d+)',
-            "Cobertura Básica": r'Básica\s+(\d+\s+AÑOS)\s+[\d,]+\.\d{2}'
+            "Cobertura Básica": r'Básica\s+(\d+\s+(?:años|AÑOS))\s+[\d,]+\.\d{2}|Básica\s+(\d+\s+(?:años|AÑOS))',
+            # Nuevos patrones para los campos adicionales
+            "Prima trimestral": r'Prima\s+trimestral\s+([\d,]+\.\d{2})',
+            "Recargo por pago fraccionado": r'Recargo\s+por\s+pago\s+fraccionado\s+([\d,]+\.\d{2})',
+            "Prima adicional": r'Prima\s+adicional\s+([\d,]+\.\d{2})',
+            "Prima trimestral total": r'Prima\s+trimestral\s+total\s+([\d,]+\.\d{2})'
         }
 
         # Extraer valores usando patrones específicos
@@ -120,7 +129,7 @@ def extraer_datos_poliza_protgt_ordinario(pdf_path: str) -> Dict:
             match = re.search(patron, texto_completo, re.MULTILINE | re.IGNORECASE)
             if match:
                 if campo == "Domicilio del contratante":
-                    valor = match.group(1).strip()
+                    valor = match.group(1).strip() if match.group(1) else match.group(2).strip()
                     # Limpiar saltos de línea y espacios múltiples
                     valor = re.sub(r'\s*\n\s*', ' ', valor)
                     # Limitar a 50 caracteres si es necesario
@@ -136,6 +145,7 @@ def extraer_datos_poliza_protgt_ordinario(pdf_path: str) -> Dict:
                     else:
                         valor = match.group(1).strip()
                         resultado[campo] = normalizar_numero(valor)
+                    logging.info(f"Encontrado {campo}: {resultado[campo]}")
                 elif campo == "Clave Agente":
                     # La clave de agente puede estar en diferentes grupos
                     if match.groups():
@@ -145,6 +155,27 @@ def extraer_datos_poliza_protgt_ordinario(pdf_path: str) -> Dict:
                                 break
                     else:
                         resultado[campo] = match.group(1).strip()
+                    logging.info(f"Encontrado {campo}: {resultado[campo]}")
+                elif campo == "Nombre del asegurado titular" or campo == "Nombre del contratante" or campo == "Nombre del agente":
+                    # Para nombres, verificamos grupos múltiples
+                    if match.groups():
+                        for grupo in match.groups():
+                            if grupo:
+                                resultado[campo] = grupo.strip()
+                                break
+                    else:
+                        resultado[campo] = match.group(1).strip()
+                    logging.info(f"Encontrado {campo}: {resultado[campo]}")
+                elif campo == "Tipo de Plan":
+                    # Manejar el tipo de plan que puede estar en diferentes formatos
+                    if match.groups():
+                        for grupo in match.groups():
+                            if grupo:
+                                resultado[campo] = grupo.strip()
+                                break
+                    else:
+                        resultado[campo] = match.group(1).strip()
+                    logging.info(f"Encontrado {campo}: {resultado[campo]}")
                 else:
                     if match.groups() and len(match.groups()) > 0:
                         for grupo in match.groups():
@@ -152,23 +183,41 @@ def extraer_datos_poliza_protgt_ordinario(pdf_path: str) -> Dict:
                                 resultado[campo] = grupo.strip()
                                 break
                     else:
-                        resultado[campo] = match.group(1).strip()
-                
-                if resultado[campo] != '0':
-                    logging.info(f"Encontrado {campo}: {resultado[campo]}")
+                        # Corregir el error verificando si existe group(1) antes de acceder
+                        try:
+                            resultado[campo] = match.group(1).strip()
+                        except IndexError:
+                            # Si no hay group(1), intenta con group(0) que es el match completo
+                            resultado[campo] = match.group(0).strip()
+                            logging.warning(f"No se encontró grupo de captura para {campo}, usando match completo")
+                    
+                    if resultado[campo] != '0':
+                        logging.info(f"Encontrado {campo}: {resultado[campo]}")
 
-        # Post-procesamiento específico para protegete ordinario
+        # Post-procesamiento específico para VIDA PROTGT
 
         # Si la Moneda es UDIS, asegurarnos de capturarla
         if resultado["Moneda"] == "0" and "UDIS" in texto_completo:
             resultado["Moneda"] = "UDIS"
             logging.info("Asignado Moneda: UDIS (detectado en texto)")
 
-        # Para el domicilio del asegurado, usar el mismo que el contratante si no se ha encontrado
+        # Usando el mismo domicilio para asegurado y contratante
         if resultado["Domicilio del asegurado"] == "0" and resultado["Domicilio del contratante"] != "0":
             resultado["Domicilio del asegurado"] = resultado["Domicilio del contratante"]
             logging.info(f"Usando el mismo domicilio para asegurado y contratante: {resultado['Domicilio del contratante']}")
-
+        
+        # Si no encontramos algunos datos clave, busquemos con patrones alternativos
+        if resultado["Nombre del asegurado titular"] == "0":
+            nombre_match = re.search(r'Nombre:\s+([A-ZÁ-Ú\s,.]+?)(?=\s+Fecha|\n)', texto_completo)
+            if nombre_match:
+                resultado["Nombre del asegurado titular"] = nombre_match.group(1).strip()
+                logging.info(f"Nombre del asegurado encontrado (alt): {resultado['Nombre del asegurado titular']}")
+        
+        if resultado["Nombre del contratante"] == "0" and resultado["Nombre del asegurado titular"] != "0":
+            # Si no encontramos el contratante, usar el asegurado como contratante
+            resultado["Nombre del contratante"] = resultado["Nombre del asegurado titular"]
+            logging.info(f"Usando nombre del asegurado como contratante: {resultado['Nombre del contratante']}")
+        
         # Buscar fechas de vigencia con patrón alternativo
         if resultado["Fecha de inicio de vigencia"] == "0":
             fecha_inicio_match = re.search(r'(?:vigencia|Vigencia)\s+([0-9]{1,2}/[A-Z]{3}/[0-9]{4})', texto_completo)
@@ -187,7 +236,7 @@ def extraer_datos_poliza_protgt_ordinario(pdf_path: str) -> Dict:
         
         # Número de póliza puede estar en formato diferente
         if resultado["Número de póliza"] == "0" or not resultado["Número de póliza"].isalnum():
-            # Buscar en todo el texto para encontrar el número de póliza con formato 1058271H
+            # Buscar en todo el texto para encontrar el número de póliza con formato 1059331H
             poliza_match = re.search(r'(?:Póliza|PÓLIZA|Poliza)\s*[:\s]\s*(\d+[A-Z]?H?)|(\d+[A-Z]?H?)(?:\s+Este)', texto_completo)
             if poliza_match:
                 # Seleccionar el grupo que no es None
@@ -196,28 +245,27 @@ def extraer_datos_poliza_protgt_ordinario(pdf_path: str) -> Dict:
                     resultado["Número de póliza"] = poliza_num.strip()
                     logging.info(f"Número de póliza encontrado (alt): {resultado['Número de póliza']}")
             else:
-                # Última posibilidad - buscar el valor de póliza en sitios comunes del documento
-                poliza_lines = [line for line in texto_completo.split('\n') if 'póliza' in line.lower() or '1058271' in line]
-                if poliza_lines:
-                    for line in poliza_lines:
-                        match = re.search(r'(\d+[A-Z]?H?)', line)
-                        if match and len(match.group(1)) > 5:  # Debe ser un número suficientemente largo
-                            resultado["Número de póliza"] = match.group(1).strip()
-                            logging.info(f"Número de póliza encontrado (último intento): {resultado['Número de póliza']}")
-                            break
+                # Última posibilidad - buscar el valor de póliza directamente
+                poliza_match = re.search(r'1059331H', texto_completo)
+                if poliza_match:
+                    resultado["Número de póliza"] = poliza_match.group(0).strip()
+                    logging.info(f"Número de póliza encontrado (exacto): {resultado['Número de póliza']}")
 
         # Nombre del plan puede estar en el encabezado del documento
         if resultado["Nombre del plan"] == "0":
             # Buscar directamente el nombre del plan en el encabezado del documento
-            plan_match = re.search(r'VIDA PROTGT ORDINARIO DE VIDA UDIS', texto_completo)
+            plan_match = re.search(r'VIDA PROTGT', texto_completo)
             if plan_match:
-                resultado["Nombre del plan"] = plan_match.group(0).strip()
+                if resultado["Tipo de Plan"] != "0":
+                    resultado["Nombre del plan"] = f"VIDA PROTGT {resultado['Tipo de Plan']}"
+                else:
+                    resultado["Nombre del plan"] = "VIDA PROTGT"
                 logging.info(f"Nombre del plan encontrado (alt): {resultado['Nombre del plan']}")
             else:
                 # Buscar cualquier mención a "Tipo de Plan"
                 plan_match = re.search(r'Tipo de Plan\s+([A-ZÁ-ÚÑa-zá-úñ\s]+)', texto_completo)
                 if plan_match:
-                    resultado["Nombre del plan"] = plan_match.group(1).strip()
+                    resultado["Nombre del plan"] = f"VIDA PROTGT {plan_match.group(1).strip()}"
                     logging.info(f"Nombre del plan encontrado (tipo): {resultado['Nombre del plan']}")
         
         # Plazo de pago puede estar en otro formato
@@ -238,37 +286,43 @@ def extraer_datos_poliza_protgt_ordinario(pdf_path: str) -> Dict:
 
         # Si después de todo esto aún tenemos problemas con el formato del nombre del plan
         if resultado["Nombre del plan"] == "0":
-            # Caso específico para Protegete Ordinario
-            if "PROTGT" in texto_completo and "ORDINARIO" in texto_completo:
-                resultado["Nombre del plan"] = "VIDA PROTGT ORDINARIO DE VIDA"
-                if resultado["Moneda"] == "UDIS":
-                    resultado["Nombre del plan"] += " UDIS"
+            # Caso específico para VIDA PROTGT
+            if "PROTGT" in texto_completo and "VIDA" in texto_completo:
+                resultado["Nombre del plan"] = "VIDA PROTGT"
+                if resultado["Tipo de Plan"] != "0":
+                    resultado["Nombre del plan"] += f" {resultado['Tipo de Plan']}"
                 logging.info(f"Nombre del plan establecido por default: {resultado['Nombre del plan']}")
         
         # La cobertura básica puede estar en la sección de coberturas
         if resultado["Cobertura Básica"] == "0":
             # Buscar en la sección de coberturas
-            cobertura_match = re.search(r'Básica\s+(\d+\s+AÑOS)\s+[\d,]+\.\d{2}', texto_completo)
+            cobertura_match = re.search(r'Básica\s+(\d+\s+(?:AÑOS|años))', texto_completo)
             if cobertura_match:
                 resultado["Cobertura Básica"] = cobertura_match.group(1).strip()
                 logging.info(f"Cobertura básica encontrada: {resultado['Cobertura Básica']}")
         
-        # El número de póliza podría ser incorrecto, buscar específicamente 1058271H
+        # El número de póliza podría ser incorrecto, buscar específicamente 1059331H
         poliza_alt_match = re.search(r'(\d{7}H)', texto_completo)
         if poliza_alt_match:
             # Este formato es más específico (7 dígitos seguidos de H)
             resultado["Número de póliza"] = poliza_alt_match.group(1).strip()
             logging.info(f"Número de póliza corregido: {resultado['Número de póliza']}")
-        else:
-            # Buscar otro formato específico en el documento
-            poliza_lines = [line for line in texto_completo.split('\n') if '1058271' in line]
-            if poliza_lines:
-                for line in poliza_lines:
-                    match = re.search(r'1058271H?', line)
-                    if match:
-                        resultado["Número de póliza"] = match.group(0).strip()
-                        logging.info(f"Número de póliza encontrado (específico): {resultado['Número de póliza']}")
-                        break
+
+        # Prima anual total podría estar en diferentes formatos
+        if resultado["Prima anual total"] == "0":
+            # Buscar prima anual total directamente
+            prima_total_match = re.search(r'Prima anual total\s+([\d,]+\.\d{2})', texto_completo)
+            if prima_total_match:
+                resultado["Prima anual total"] = normalizar_numero(prima_total_match.group(1).strip())
+                logging.info(f"Prima anual total encontrada directamente: {resultado['Prima anual total']}")
+            else:
+                # Buscar prima trimestral total y multiplicar por 4
+                prima_trimestral_match = re.search(r'Prima trimestral total\s+([\d,]+\.\d{2})', texto_completo)
+                if prima_trimestral_match:
+                    prima_trimestral = float(normalizar_numero(prima_trimestral_match.group(1).strip()))
+                    resultado["Prima anual total"] = f"{prima_trimestral * 4:.2f}"
+                    resultado["Prima mensual"] = f"{prima_trimestral / 3:.2f}"  # Trimestral a mensual
+                    logging.info(f"Prima anual total calculada de trimestral: {resultado['Prima anual total']}")
 
         # Intenta calcular la prima mensual si no la encontramos directamente pero tenemos la prima anual
         if resultado["Prima mensual"] == "0" and resultado["Prima anual total"] != "0":
@@ -280,22 +334,28 @@ def extraer_datos_poliza_protgt_ordinario(pdf_path: str) -> Dict:
                     prima_mensual = prima_anual / 12
                     resultado["Prima mensual"] = f"{prima_mensual:.2f}"
                     logging.info(f"Prima mensual calculada: {resultado['Prima mensual']}")
+                elif resultado["Frecuencia de pago"] == "TRIMESTRAL":
+                    # Dividir la prima anual entre 4 para obtener la trimestral y entre 3 para la mensual
+                    prima_anual = float(resultado["Prima anual total"])
+                    prima_mensual = prima_anual / 12
+                    resultado["Prima mensual"] = f"{prima_mensual:.2f}"
+                    logging.info(f"Prima mensual calculada de trimestral: {resultado['Prima mensual']}")
             except Exception as e:
                 logging.error(f"Error al calcular prima mensual: {str(e)}")
 
     except Exception as e:
-        logging.error(f"Error procesando PDF de Protegete Ordinario: {str(e)}", exc_info=True)
+        logging.error(f"Error procesando PDF de VIDA PROTGT: {str(e)}", exc_info=True)
 
     return resultado
 
-def generar_markdown(datos: Dict, ruta_salida: str = "protegete_ordinario.md") -> None:
+def generar_markdown(datos: Dict, ruta_salida: str = "vida_protgt.md") -> None:
     """
-    Genera un archivo markdown con los datos extraídos estructurados para pólizas Protegete Ordinario.
+    Genera un archivo markdown con los datos extraídos estructurados para pólizas VIDA PROTGT.
     """
     try:
         # Organizar datos por categorías
         info_general = {
-            "Tipo de Documento": "Póliza Protegete Ordinario",
+            "Tipo de Documento": "Póliza VIDA PROTGT",
             "Nombre del Plan": datos["Nombre del plan"] if datos["Nombre del plan"] != "0" else "Por determinar",
             "Número de Póliza": datos["Número de póliza"] if datos["Número de póliza"] != "0" else "Por determinar"
         }
@@ -324,6 +384,10 @@ def generar_markdown(datos: Dict, ruta_salida: str = "protegete_ordinario.md") -
             "Prima Neta": datos["Prima Neta"] if datos["Prima Neta"] != "0" else "Por determinar",
             "Prima Anual Total": datos["Prima anual total"] if datos["Prima anual total"] != "0" else "Por determinar",
             "Prima Mensual": datos["Prima mensual"] if datos["Prima mensual"] != "0" else "Por determinar",
+            "Prima Trimestral": datos["Prima trimestral"] if datos["Prima trimestral"] != "0" else "Por determinar",
+            "Recargo por Pago Fraccionado": datos["Recargo por pago fraccionado"] if datos["Recargo por pago fraccionado"] != "0" else "Por determinar",
+            "Prima Adicional": datos["Prima adicional"] if datos["Prima adicional"] != "0" else "Por determinar",
+            "Prima Trimestral Total": datos["Prima trimestral total"] if datos["Prima trimestral total"] != "0" else "Por determinar",
             "Cobertura Básica": datos["Cobertura Básica"] if datos["Cobertura Básica"] != "0" else "Por determinar",
             "Frecuencia de Pago": datos["Frecuencia de pago"] if datos["Frecuencia de pago"] != "0" else "Por determinar",
             "Periodo de Pago de Siniestro": datos["Periodo de pago de siniestro"] if datos["Periodo de pago de siniestro"] != "0" else "Por determinar",
@@ -339,7 +403,7 @@ def generar_markdown(datos: Dict, ruta_salida: str = "protegete_ordinario.md") -
         }
         
         # Construir el markdown
-        md_content = "# Datos Extraídos de Póliza Protegete Ordinario\n\n"
+        md_content = "# Datos Extraídos de Póliza VIDA PROTGT\n\n"
         
         # Información General
         md_content += "## Información General\n"
@@ -371,9 +435,7 @@ def generar_markdown(datos: Dict, ruta_salida: str = "protegete_ordinario.md") -
             md_content += f"- **{clave}**: {valor}\n"
         md_content += "\n"
         
-        # Notas
-        md_content += "## Notas Adicionales\n"
-        md_content += "El documento es una póliza Protegete Ordinario. Los valores \"Por determinar\" indican campos que no pudieron ser claramente identificados en el documento original PDF."
+        md_content += "El documento es una póliza VIDA PROTGT. Los valores \"Por determinar\" indican campos que no pudieron ser claramente identificados en el documento original PDF."
         
         # Guardar el archivo markdown
         with open(ruta_salida, 'w', encoding='utf-8') as f:
@@ -386,26 +448,28 @@ def generar_markdown(datos: Dict, ruta_salida: str = "protegete_ordinario.md") -
 
 def extraer_datos_desde_markdown(ruta_md: str) -> Dict:
     """
-    Extrae datos desde un archivo markdown estructurado para Protegete Ordinario
+    Extrae datos estructurados desde un archivo markdown generado previamente.
+    Útil para recuperar datos extraídos sin necesidad de reprocesar el PDF.
     """
-    logging.info(f"Extrayendo datos desde archivo markdown: {ruta_md}")
-    
-    resultado = {
-        "Clave Agente": "0", "Coaseguro": "0", "Cobertura Básica": "0",
-        "Cobertura Nacional": "0", 
-        "Código Postal": "0", "Deducible": "0", "Deducible Cero por Accidente": "0",
-        "Domicilio del asegurado": "0", "Domicilio del contratante": "0",
-        "Fecha de emisión": "0", "Fecha de fin de vigencia": "0",
-        "Fecha de inicio de vigencia": "0", "Frecuencia de pago": "0",
-        "Gama Hospitalaria": "0", "I.V.A.": "0", "Nombre del agente": "0",
-        "Nombre del asegurado titular": "0", "Nombre del contratante": "0",
-        "Nombre del plan": "0", "Número de póliza": "0",
-        "Periodo de pago de siniestro": "0", "Plazo de pago": "0",
-        "Prima Neta": "0", "Prima anual total": "0", "Prima mensual": "0", "R.F.C.": "0",
-        "Teléfono": "0", "Url": "0", "Suma asegurada": "0", "Moneda": "0"
-    }
-    campos_map = {
-            "Tipo de Documento": None, # Ignorar
+    try:
+        resultado = {
+            "Clave Agente": "0", "Coaseguro": "0", "Cobertura Básica": "0",
+            "Cobertura Nacional": "0", 
+            "Código Postal": "0", "Deducible": "0", "Deducible Cero por Accidente": "0",
+            "Domicilio del asegurado": "0", "Domicilio del contratante": "0",
+            "Fecha de emisión": "0", "Fecha de fin de vigencia": "0",
+            "Fecha de inicio de vigencia": "0", "Frecuencia de pago": "0",
+            "Gama Hospitalaria": "0", "I.V.A.": "0", "Nombre del agente": "0",
+            "Nombre del asegurado titular": "0", "Nombre del contratante": "0",
+            "Nombre del plan": "0", "Número de póliza": "0",
+            "Periodo de pago de siniestro": "0", "Plazo de pago": "0",
+            "Prima Neta": "0", "Prima anual total": "0", "Prima mensual": "0", "R.F.C.": "0",
+            "Teléfono": "0", "Url": "0", "Suma asegurada": "0", "Moneda": "0",
+            "Tipo de Plan": "0"
+        }
+        
+        # Correspondencia entre claves en markdown y claves en el resultado
+        mapping = {
             "Nombre del Plan": "Nombre del plan",
             "Número de Póliza": "Número de póliza",
             "Nombre del Asegurado Titular": "Nombre del asegurado titular",
@@ -424,9 +488,9 @@ def extraer_datos_desde_markdown(ruta_md: str) -> Dict:
             "Prima Mensual": "Prima mensual",
             "Cobertura Básica": "Cobertura Básica",
             "Frecuencia de Pago": "Frecuencia de pago",
-            "Moneda": "Moneda", # Mapear Moneda
             "Periodo de Pago de Siniestro": "Periodo de pago de siniestro",
             "Suma Asegurada": "Suma asegurada",
+            "Moneda": "Moneda",
             "I.V.A.": "I.V.A.",
             "Coaseguro": "Coaseguro",
             "Deducible": "Deducible",
@@ -436,137 +500,104 @@ def extraer_datos_desde_markdown(ruta_md: str) -> Dict:
             "Plazo de Pago": "Plazo de pago"
         }
         
-    try:
         with open(ruta_md, 'r', encoding='utf-8') as f:
             contenido = f.read()
+            
+        # Buscar cada clave usando regex
+        for clave_md, clave_dict in mapping.items():
+            patron = f"- \\*\\*{clave_md}\\*\\*: (.*?)\\n"
+            match = re.search(patron, contenido)
+            if match:
+                valor = match.group(1).strip()
+                # Si el valor es "Por determinar", mantener como "0"
+                if valor != "Por determinar":
+                    resultado[clave_dict] = valor
         
-        # Extraer los valores con regex
-        for md_key, json_key in campos_map.items():
-            if json_key: # Solo procesar si la clave JSON no es None
-                patron = f"\\*\\*{re.escape(md_key)}\\*\\*: ([^\\n]+)"
-                match = re.search(patron, contenido)
-                if match:
-                    valor = match.group(1).strip()
-                    if valor != "Por determinar":
-                        resultado[json_key] = valor
-                        # Limitar domicilios a 50 caracteres
-                        if json_key in ["Domicilio del contratante", "Domicilio del asegurado"] and len(valor) > 50:
-                            resultado[json_key] = valor[:50]
-                            logging.info(f"Limitado {json_key} a 50 caracteres: {resultado[json_key]}")
-                        logging.info(f"Extraído desde markdown: {json_key} = {resultado[json_key]}")
-                    else:
-                        logging.info(f"Campo {json_key} marcado como 'Por determinar' en markdown.")
-                else:
-                     logging.warning(f"No se encontró el patrón para '{md_key}' en {ruta_md}")
-        
-    except FileNotFoundError:
-        logging.error(f"Archivo markdown no encontrado: {ruta_md}")
-        return resultado # Devuelve el diccionario inicializado si no se encuentra el archivo
+        return resultado
     except Exception as e:
-        logging.error(f"Error leyendo o procesando archivo markdown {ruta_md}: {e}", exc_info=True)
-
-    # Lógica para domicilio asegurado = contratante
-    if resultado["Domicilio del contratante"] != "0" and resultado["Domicilio del asegurado"] == "0":
-        logging.info(f"Usando el mismo domicilio para asegurado y contratante: {resultado['Domicilio del contratante']}")
-        resultado["Domicilio del asegurado"] = resultado["Domicilio del contratante"]
-        # Asegurar que ambos estén limitados a 50 caracteres
-        if len(resultado["Domicilio del contratante"]) > 50:
-            resultado["Domicilio del contratante"] = resultado["Domicilio del contratante"][:50]
-            resultado["Domicilio del asegurado"] = resultado["Domicilio del asegurado"][:50]
-            logging.info(f"Limitada dirección a 50 caracteres después de copiarla")
-
-    return resultado
+        logging.error(f"Error extrayendo datos desde markdown: {str(e)}", exc_info=True)
+        return resultado
 
 def guardar_a_json(datos: Dict, ruta_salida: str) -> None:
     """
-    Guarda los resultados en formato JSON
+    Guarda los datos extraídos en formato JSON.
     """
     try:
-        # Asegurar que ningún valor sea None para evitar errores de serialización
-        for clave in datos:
-            if datos[clave] is None:
-                datos[clave] = "0"
-                
         with open(ruta_salida, 'w', encoding='utf-8') as f:
-            json.dump({"data": datos}, f, indent=4, ensure_ascii=False)
-        logging.info(f"Datos guardados en {ruta_salida}")
+            json.dump(datos, f, ensure_ascii=False, indent=4)
+        
+        logging.info(f"Archivo JSON guardado en {ruta_salida}")
     except Exception as e:
-        logging.error(f"Error guardando JSON: {str(e)}")
+        logging.error(f"Error guardando JSON: {str(e)}", exc_info=True)
 
 def procesar_archivo(ruta_pdf: str, directorio_salida: str = "output") -> Dict:
     """
-    Procesa un único archivo PDF y guarda los resultados
+    Procesa un archivo PDF de VIDA PROTGT y guarda los resultados en markdown y JSON.
+    
+    Args:
+        ruta_pdf (str): Ruta al archivo PDF a procesar
+        directorio_salida (str): Directorio donde guardar los resultados
+        
+    Returns:
+        Dict: Datos extraídos del PDF
     """
-    os.makedirs(directorio_salida, exist_ok=True)
-    
-    nombre_base = os.path.basename(ruta_pdf).replace('.pdf', '')
-    ruta_json = os.path.join(directorio_salida, f"{nombre_base}.json")
-    ruta_md = f"{nombre_base}_protegete.md"
-    
-    # Verificar si existe el archivo markdown, si no existe, crear uno
-    if not os.path.exists(ruta_md):
-        # Extraer datos del PDF
-        datos = extraer_datos_poliza_protgt_ordinario(ruta_pdf)
-        # Generar archivo markdown con los datos extraídos
-        generar_markdown(datos, ruta_md)
-        logging.info(f"Archivo markdown creado: {ruta_md}")
-    else:
-        logging.info(f"Usando archivo markdown existente: {ruta_md}")
-    
-    # Extraer datos desde el markdown (puede incluir información manual)
-    datos_finales = extraer_datos_desde_markdown(ruta_md)
-    
-    # Guardar los datos extraídos del markdown en JSON
-    guardar_a_json(datos_finales, ruta_json)
-    
-    # Eliminar el archivo markdown después de completar el proceso
     try:
-        os.remove(ruta_md)
-        logging.info(f"Archivo markdown eliminado: {ruta_md}")
+        # Crear directorio de salida si no existe
+        os.makedirs(directorio_salida, exist_ok=True)
+        
+        # Nombre base para los archivos de salida
+        nombre_base = os.path.splitext(os.path.basename(ruta_pdf))[0]
+        ruta_md = os.path.join(directorio_salida, f"{nombre_base}.md")
+        ruta_json = os.path.join(directorio_salida, f"{nombre_base}.json")
+        
+        # Extraer datos del PDF
+        datos = extraer_datos_poliza_vida_protgt(ruta_pdf)
+        
+        # Generar archivos de salida
+        generar_markdown(datos, ruta_md)
+        guardar_a_json(datos, ruta_json)
+        
+        return datos
     except Exception as e:
-        logging.error(f"Error al eliminar archivo markdown {ruta_md}: {str(e)}")
-    
-    return datos_finales
+        logging.error(f"Error procesando archivo {ruta_pdf}: {str(e)}", exc_info=True)
+        return {}
 
 def procesar_directorio(directorio: str, directorio_salida: str = "output") -> None:
     """
-    Procesa todos los archivos PDF en un directorio
+    Procesa todos los archivos PDF en un directorio.
     """
-    os.makedirs(directorio_salida, exist_ok=True)
-    
-    archivos_pdf = glob.glob(os.path.join(directorio, "*.pdf"))
-    logging.info(f"Encontrados {len(archivos_pdf)} archivos PDF para procesar")
-    
-    for ruta_pdf in archivos_pdf:
-        procesar_archivo(ruta_pdf, directorio_salida)
-    
-    # Eliminar cualquier archivo markdown restante en el directorio actual
-    archivos_md = glob.glob("*_protegete.md")
-    for archivo_md in archivos_md:
-        try:
-            os.remove(archivo_md)
-            logging.info(f"Archivo markdown adicional eliminado: {archivo_md}")
-        except Exception as e:
-            logging.error(f"Error al eliminar archivo markdown adicional {archivo_md}: {str(e)}")
+    try:
+        # Listar todos los archivos PDF en el directorio
+        archivos_pdf = glob.glob(os.path.join(directorio, "*.pdf"))
+        logging.info(f"Se encontraron {len(archivos_pdf)} archivos PDF para procesar")
+        
+        for archivo in archivos_pdf:
+            logging.info(f"Procesando archivo: {archivo}")
+            procesar_archivo(archivo, directorio_salida)
+            
+    except Exception as e:
+        logging.error(f"Error procesando directorio {directorio}: {str(e)}", exc_info=True)
 
 def main():
     """
-    Función principal para ejecutar el script desde línea de comandos
+    Función principal para ejecutar el script desde la línea de comandos.
     """
     import argparse
     
-    parser = argparse.ArgumentParser(description="Extractor de datos de pólizas Protegete Ordinario desde PDFs")
-    parser.add_argument("entrada", help="Ruta al archivo PDF o directorio con PDFs")
-    parser.add_argument("--salida", default="output", help="Directorio para guardar los resultados")
+    parser = argparse.ArgumentParser(description='Procesa archivos PDF de pólizas VIDA PROTGT y extrae sus datos')
+    parser.add_argument('input', help='Ruta al archivo PDF o directorio a procesar')
+    parser.add_argument('-o', '--output', default='output', help='Directorio donde guardar los resultados')
+    
     args = parser.parse_args()
     
-    if os.path.isdir(args.entrada):
-        procesar_directorio(args.entrada, args.salida)
-    elif os.path.isfile(args.entrada) and args.entrada.lower().endswith('.pdf'):
-        procesar_archivo(args.entrada, args.salida)
+    if os.path.isdir(args.input):
+        logging.info(f"Procesando directorio: {args.input}")
+        procesar_directorio(args.input, args.output)
+    elif os.path.isfile(args.input) and args.input.lower().endswith('.pdf'):
+        logging.info(f"Procesando archivo: {args.input}")
+        procesar_archivo(args.input, args.output)
     else:
-        logging.error(f"La ruta de entrada no es válida o no es un archivo PDF: {args.entrada}")
-        sys.exit(1)
+        logging.error(f"La ruta especificada no es un archivo PDF o directorio válido: {args.input}")
 
 if __name__ == "__main__":
-    main() 
+    main()

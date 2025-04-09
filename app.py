@@ -15,6 +15,7 @@ import logging
 from validar_tipo_endoso import validate_endoso
 from PIL import Image
 import io
+import traceback
 
 # Configuración de logging
 logging.basicConfig(
@@ -133,7 +134,7 @@ def upload_file():
         # **1. Definir la estructura base completa con valores por defecto**
         respuesta_poliza_base = {
             "Clave Agente": "No disponible", "Coaseguro": "No disponible", "Cobertura Básica": "No disponible",
-            "Cobertura Nacional": "No disponible", "Coberturas adicionales con costo": "No disponible",
+            "Cobertura Nacional": "No disponible", 
             "Código Postal": "No disponible", "Deducible": "No disponible", "Deducible Cero por Accidente": "No disponible",
             "Domicilio del asegurado": "No disponible", "Domicilio del contratante": "No disponible",
             "Fecha de emisión": "No disponible", "Fecha de fin de vigencia": "No disponible",
@@ -163,6 +164,11 @@ def upload_file():
 
         if datos_completos_extraidos:
             logger.info(f"Rellenando estructura base con datos_completos para {resultado.get('descripcion')}")
+            # Eliminar "Coberturas adicionales con costo" de datos_completos_extraidos si existe
+            if "Coberturas adicionales con costo" in datos_completos_extraidos:
+                logger.info("Eliminando campo 'Coberturas adicionales con costo' de los datos")
+                del datos_completos_extraidos["Coberturas adicionales con costo"]
+                
             for key, default_value in respuesta_poliza_base.items():
                 # Usar el valor extraído si existe y no es "0" o None (a menos que el default sea numérico)
                 valor_extraido = datos_completos_extraidos.get(key)
@@ -210,9 +216,18 @@ def upload_file():
         elif resultado.get("tipo_documento") == "POLIZA_PROTGT_TEMPORAL_MN":
             respuesta_financiera_base["ramo"] = "VIDA"
             respuesta_financiera_base["tipo_endoso"] = resultado.get("descripcion") or "PÓLIZA PROTGT TEMPORAL MN"
+        elif resultado.get("tipo_documento") == "POLIZA_VIDA_PROTGT":
+            respuesta_financiera_base["ramo"] = "VIDA"
+            respuesta_financiera_base["tipo_endoso"] = resultado.get("descripcion") or "PÓLIZA VIDA PROTGT"
+        elif resultado.get("tipo_documento") == "PROTECCION_EFECTIVA":
+            respuesta_financiera_base["ramo"] = "VIDA"
+            respuesta_financiera_base["tipo_endoso"] = resultado.get("descripcion") or "PÓLIZA PROTECCIÓN EFECTIVA"
         elif resultado.get("tipo_documento") == "POLIZA_VIDA":
             respuesta_financiera_base["ramo"] = "VIDA"
             respuesta_financiera_base["tipo_endoso"] = resultado.get("descripcion") or "PÓLIZA DE VIDA"
+        elif resultado.get("tipo_documento") == "PROTGT_PYME":
+            respuesta_financiera_base["ramo"] = "PYME"
+            respuesta_financiera_base["tipo_endoso"] = resultado.get("descripcion") or "PLAN PROTEGE PYME"
         else:
             # Para cualquier otro tipo de documento, usar valores genéricos
             respuesta_financiera_base["ramo"] = "OTRO"
@@ -248,6 +263,68 @@ def pdf_preview(filename):
     except Exception as e:
         logger.error(f"Error al servir PDF: {str(e)}")
         return jsonify({"error": str(e)}), 404
+
+@app.route('/api/validate', methods=['POST'])
+def validate_file():
+    try:
+        # Verificar si se envió un archivo
+        if 'file' not in request.files:
+            return jsonify({'error': 'No se envió ningún archivo'}), 400
+        
+        file = request.files['file']
+        
+        # Verificar si el nombre del archivo está vacío
+        if file.filename == '':
+            return jsonify({'error': 'Nombre de archivo vacío'}), 400
+        
+        # Verificar si es un archivo PDF
+        if not file.filename.lower().endswith('.pdf'):
+            return jsonify({'error': 'El archivo debe ser un PDF'}), 400
+        
+        # Crear directorio temporal si no existe
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+        
+        # Guardar el archivo temporalmente
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
+        file.save(file_path)
+        
+        # Validar el tipo de documento
+        result = validate_endoso(file_path)
+        
+        if 'error' in result:
+            return jsonify(result), 400
+        
+        # Actualizar la respuesta según el tipo de documento
+        response = {
+            'success': True,
+            'tipo_documento': result.get('tipo_documento', 'DESCONOCIDO'),
+            'descripcion': result.get('descripcion', 'Documento Desconocido'),
+            'datos_financieros': result.get('datos_financieros', {})
+        }
+        
+        # Agregar datos específicos según el tipo de documento
+        if result.get('tipo_documento') == 'ENDOSO_A':
+            response['tipo_endoso'] = result.get('tipo_endoso', '')
+        elif result.get('tipo_documento') in ['POLIZA_VIDA', 'POLIZA_ALIADOS_PPR', 'POLIZA_PROTGT_TEMPORAL_MN', 'POLIZA_VIDA_PROTGT', 'PROTECCION_EFECTIVA', 'PROTGT_PYME']:
+            response['datos_completos'] = result.get('datos_completos', {})
+            
+            # Generar URL markdown
+            if 'datos_completos' in result and 'file_path' in result.get('datos_completos', {}):
+                md_file = result['datos_completos'].get('file_path', '')
+                if md_file and os.path.exists(md_file):
+                    response['markdown_url'] = f"/markdown/{os.path.basename(md_file)}"
+        
+        # Eliminar el archivo temporal después de procesarlo
+        try:
+            os.remove(file_path)
+        except Exception as e:
+            print(f"Error al eliminar archivo temporal: {str(e)}")
+        
+        return jsonify(response), 200
+        
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
 
 if __name__ == '__main__':
     app.run(debug=True) 

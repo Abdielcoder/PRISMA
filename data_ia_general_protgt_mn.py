@@ -62,7 +62,7 @@ def extraer_datos_poliza_protgt_temporal_mn(pdf_path: str) -> Dict:
     logging.info(f"Procesando archivo Protegete Temporal MN: {pdf_path}")
     resultado = {
         "Clave Agente": "0", "Coaseguro": "0", "Cobertura Básica": "0",
-        "Cobertura Nacional": "0", "Coberturas adicionales con costo": "0",
+        "Cobertura Nacional": "0", 
         "Código Postal": "0", "Deducible": "0", "Deducible Cero por Accidente": "0",
         "Domicilio del asegurado": "0", "Domicilio del contratante": "0",
         "Fecha de emisión": "0", "Fecha de fin de vigencia": "0",
@@ -87,6 +87,18 @@ def extraer_datos_poliza_protgt_temporal_mn(pdf_path: str) -> Dict:
         tipo_documento = detectar_tipo_documento(texto_completo)
         if tipo_documento != "PROTGT_TEMPORAL_MN" and tipo_documento != "VIDA":
             logging.warning(f"Este documento no parece ser una póliza Protegete Temporal MN: {tipo_documento}")
+
+        # Sistema de patrones alternativos para campos críticos
+        patrones_alternativos = {
+            "Suma asegurada": [
+                r'(?:Cobertura básica|Fallecimiento).*?(\d{1,3}(?:,\d{3})*\.\d{2})',
+                r'(?:Suma asegurada|Suma\s+Asegurada).*?(\d{1,3}(?:,\d{3})*\.\d{2})'
+            ],
+            "Cobertura Básica": [
+                r'(?:Cobertura básica|COBERTURA BÁSICA).*?(\d+\s+(?:años|AÑOS))',
+                r'Plazo.*?Seguro.*?(\d+\s+(?:años|AÑOS))'
+            ]
+        }
 
         # Patrones específicos para el formato Protegete Temporal MN
         patrones = {
@@ -164,26 +176,11 @@ def extraer_datos_poliza_protgt_temporal_mn(pdf_path: str) -> Dict:
             resultado["Moneda"] = "MN"
             logging.info("Asignado Moneda: MN (detectado en texto)")
 
-        # Para el domicilio del asegurado, usar el mismo que el contratante si no se ha encontrado
+        # Usando el mismo domicilio para asegurado y contratante
         if resultado["Domicilio del asegurado"] == "0" and resultado["Domicilio del contratante"] != "0":
             resultado["Domicilio del asegurado"] = resultado["Domicilio del contratante"]
             logging.info(f"Usando el mismo domicilio para asegurado y contratante: {resultado['Domicilio del contratante']}")
 
-        # Buscar coberturas adicionales
-        coberturas_match = re.search(r'Coberturas amparadas(.*?)Beneficios', texto_completo, re.DOTALL)
-        if coberturas_match:
-            coberturas_texto = coberturas_match.group(1)
-            coberturas_adicionales = []
-            for linea in coberturas_texto.split('\n'):
-                if "Básica" not in linea and len(linea.strip()) > 3:
-                    cobertura = re.sub(r'\s+', ' ', linea.strip())
-                    if cobertura and not cobertura.isspace() and len(cobertura) > 5:
-                        coberturas_adicionales.append(cobertura)
-            
-            if coberturas_adicionales:
-                resultado["Coberturas adicionales con costo"] = "; ".join(coberturas_adicionales)
-                logging.info(f"Coberturas adicionales encontradas: {resultado['Coberturas adicionales con costo']}")
-            
         # Si no encontramos algunos datos clave, busquemos con patrones alternativos
         if resultado["Nombre del asegurado titular"] == "0":
             nombre_match = re.search(r'Nombre:\s+([A-ZÁ-Ú\s,.]+?)(?=\s+Fecha|\n)', texto_completo)
@@ -340,7 +337,6 @@ def generar_markdown(datos: Dict, ruta_salida: str = "protegete_temporal_mn.md")
             "Prima Anual Total": datos["Prima anual total"] if datos["Prima anual total"] != "0" else "Por determinar",
             "Prima Mensual": datos["Prima mensual"] if datos["Prima mensual"] != "0" else "Por determinar",
             "Cobertura Básica": datos["Cobertura Básica"] if datos["Cobertura Básica"] != "0" else "Por determinar",
-            "Coberturas Adicionales con Costo": datos["Coberturas adicionales con costo"] if datos["Coberturas adicionales con costo"] != "0" else "Por determinar",
             "Frecuencia de Pago": datos["Frecuencia de pago"] if datos["Frecuencia de pago"] != "0" else "Por determinar",
             "Periodo de Pago de Siniestro": datos["Periodo de pago de siniestro"] if datos["Periodo de pago de siniestro"] != "0" else "Por determinar",
             "Suma Asegurada": datos["Suma asegurada"] if datos["Suma asegurada"] != "0" else "Por determinar",
@@ -406,7 +402,7 @@ def extraer_datos_desde_markdown(ruta_md: str) -> Dict:
     try:
         resultado = {
             "Clave Agente": "0", "Coaseguro": "0", "Cobertura Básica": "0",
-            "Cobertura Nacional": "0", "Coberturas adicionales con costo": "0",
+            "Cobertura Nacional": "0", 
             "Código Postal": "0", "Deducible": "0", "Deducible Cero por Accidente": "0",
             "Domicilio del asegurado": "0", "Domicilio del contratante": "0",
             "Fecha de emisión": "0", "Fecha de fin de vigencia": "0",
@@ -438,7 +434,6 @@ def extraer_datos_desde_markdown(ruta_md: str) -> Dict:
             "Prima Anual Total": "Prima anual total",
             "Prima Mensual": "Prima mensual",
             "Cobertura Básica": "Cobertura Básica",
-            "Coberturas Adicionales con Costo": "Coberturas adicionales con costo",
             "Frecuencia de Pago": "Frecuencia de pago",
             "Periodo de Pago de Siniestro": "Periodo de pago de siniestro",
             "Suma Asegurada": "Suma asegurada",
