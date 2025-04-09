@@ -74,6 +74,7 @@ def extraer_datos_poliza_vida(pdf_path: str) -> Dict:
         "Plazo de pago": "0",
         "Prima Neta": "0",
         "Prima anual total": "0",
+        "Prima mensual": "0",
         "R.F.C.": "0",
         "Teléfono": "0",
         "Url": "0"

@@ -872,6 +872,21 @@
                             // Actualizar información del documento
                             if (ramoElement) ramoElement.textContent = "VIDA";
                             if (tipoEndosoElement) tipoEndosoElement.textContent = "PÓLIZA DE VIDA";
+                        } else if (data.document_type === "POLIZA_ALIADOS_PPR" && data.poliza_data) {
+                            console.log("Datos de póliza Aliados+ PPR recibidos:", data.poliza_data);
+                            console.log("Prima Neta recibida:", data.poliza_data["Prima Neta"]);
+                            console.log("Prima anual total recibida:", data.poliza_data["Prima anual total"]);
+                            
+                            // Guardar los datos de la póliza en el elemento pdfItem
+                            pdfItem.setAttribute('data-poliza-data', JSON.stringify(data.poliza_data));
+                            
+                            // Mostrar todos los datos de la póliza en lugar de los financieros
+                            displayPolizaVidaData(data.poliza_data, pdfItem, true);
+                            previewElement.setAttribute('data-financial', JSON.stringify(data.financial_data));
+                            
+                            // Actualizar información del documento
+                            if (ramoElement) ramoElement.textContent = "VIDA";
+                            if (tipoEndosoElement) tipoEndosoElement.textContent = data.description || "PÓLIZA ALIADOS+ PPR";
                         } else {
                             // Para endosos tipo A, mostrar datos financieros normalmente
                             displayFinancialData(data.financial_data, pdfItem);
@@ -1257,10 +1272,10 @@
                 const pdfData = img.getAttribute('data-pdf');
                 const financialData = JSON.parse(img.getAttribute('data-financial') || '{}');
                 
-                // Determinar si es una póliza de vida
+                // Determinar si es una póliza de vida o Aliados+ PPR
                 const pdfItem = img.closest('.pdf-item');
                 const tipoEndosoElement = pdfItem ? pdfItem.querySelector('.document-tipo-endoso') : null;
-                const isPolizaVida = tipoEndosoElement && tipoEndosoElement.textContent === "PÓLIZA DE VIDA";
+                const isPolizaVida = tipoEndosoElement && (tipoEndosoElement.textContent === "PÓLIZA DE VIDA" || tipoEndosoElement.textContent === "PÓLIZA ALIADOS+ PPR");
                 
                 // Obtener datos de la póliza si aplica
                 let polizaData = null;

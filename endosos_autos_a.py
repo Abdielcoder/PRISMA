@@ -186,196 +186,192 @@ def extraer_desde_texto_crudo(texto_crudo):
         return None
     # --- Fin modificación --- 
 
-def extraer_datos_endoso_a(pdf_path):
+def extraer_datos_endoso_a(pdf_path: str) -> Dict[str, Union[str, float]]:
     """
-    Extrae los datos financieros de un PDF de tipo A.
-    Versión mejorada con múltiples estrategias.
+    Extrae datos financieros de un endoso tipo A.
+    
+    Args:
+        pdf_path (str): Ruta al archivo PDF del endoso
+        
+    Returns:
+        Dict[str, Union[str, float]]: Diccionario con datos financieros extraídos
     """
-    logging.info(f"Procesando archivo: {pdf_path}")
-    try:
-        reader = PdfReader(pdf_path)
-        if len(reader.pages) < 1:
-            logging.error(f"El PDF {pdf_path} no tiene páginas")
-            return None
+    # Extraer texto del PDF
+    texto = extraer_texto_pdf(pdf_path)
+    
+    # Inicializar diccionario de resultados
+    resultados = {
+        "prima_neta": "0",
+        "gastos_expedicion": "0",
+        "iva": "0",
+        "precio_total": "0",
+        "tasa_financiamiento": "0",
+        "prima_mensual": "0"
+    }
+
+    formato = detectar_formato(texto)
+    logging.info(f"Formato detectado: {formato}")
             
-        # Extraer texto SOLO de la primera página
-        texto_pdf = reader.pages[0].extract_text()
-        logging.debug(f"Texto extraído (primeros 500 chars): {texto_pdf[:500]}")
+    # --- Estrategia 1: Patrones específicos por formato ---
+    logging.info("Intentando Estrategia 1: Patrones específicos por formato...")
+    
+    # Definir patrones base
+    patrones_base = {
+        'prima_neta': r'Prima\s+neta',
+        'gastos_expedicion': r'Gastos\s+por\s+expedición',
+        'iva': r'I\.V\.A\.',
+        'precio_total': r'Precio\s+total|Total\s+a\s+pagar' # Incluir alternativa común
+    }
+    
+    # Construir patrones específicos según el formato
+    patrones_especificos = {}
+    if formato == "FORMATO_LINEAL":
+        # Etiqueta seguido de espacios y número en la misma línea
+        for k, v in patrones_base.items():
+            patrones_especificos[k] = [f'{v}\\s+(\\d{{1,3}}(?:,\\d{{3}})*(?:\\.\\d{{2}})?)\\b']
+    elif formato == "FORMATO_VERTICAL":
+        # Etiqueta seguido de newline (con o sin espacios) y número
+         for k, v in patrones_base.items():
+             # Priorizar patrón con valor en la línea siguiente inmediata
+             p1 = f'{v}\\s*\\n\\s*(\\d{{1,3}}(?:,\\d{{3}})*(?:\\.\\d{{2}})?)\\b'
+             # Patrón para bloque O_6731931 (ya no necesario aquí si se maneja aparte, pero como fallback)
+             p2 = f'{v}\\s*\\n([\\d\\.,]+)' # Menos específico
+             patrones_especificos[k] = [p1, p2]
+         # Patrón específico para el bloque completo O_6731931
+         patron_bloque_vertical = r'Prima neta\\s*\\nTasa de financiamiento\\s*\\nGastos por expedición\\s*\\nI\\.V\\.A\\.\\s*\\nPrecio total\\s*\\n(\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?)\\s*\\n(?:\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?)\\s*\\n(\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?)\\s*\\n(\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?)\\s*\\n(\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?)'
 
-        formato = detectar_formato(texto_pdf)
-        logging.info(f"Formato detectado: {formato}")
-            
-        prima_neta = None
-        tasa_financiamiento = None
-        gastos_expedicion = None
-        iva = None
-        precio_total = None
-        
-        # --- Estrategia 1: Patrones específicos por formato ---
-        logging.info("Intentando Estrategia 1: Patrones específicos por formato...")
-        
-        # Definir patrones base
-        patrones_base = {
-            'prima_neta': r'Prima\s+neta',
-            'gastos_expedicion': r'Gastos\s+por\s+expedición',
-            'iva': r'I\.V\.A\.',
-            'precio_total': r'Precio\s+total|Total\s+a\s+pagar' # Incluir alternativa común
+    else: # FORMATO_DESCONOCIDO o FORMATO_TABLA (tratar genéricamente)
+         # Intentar ambos patrones (lineal y vertical) más uno genérico
+         for k, v in patrones_base.items():
+            patrones_especificos[k] = [
+                f'{v}\\s+(\\d{{1,3}}(?:,\\d{{3}})*(?:\\.\\d{{2}})?)\\b', # Lineal
+                f'{v}\\s*\\n\\s*(\\d{{1,3}}(?:,\\d{{3}})*(?:\\.\\d{{2}})?)\\b', # Vertical
+                f'{v}[\\s\\n]*?(\\d{{1,3}}(?:,\\d{{3}})*(?:\\.\\d{{2}})?)\\b' # Genérico
+            ]
+    
+    # Aplicar patrones específicos
+    datos_temp = {}
+    for campo, lista_patrones in patrones_especificos.items():
+         for i, patron in enumerate(lista_patrones):
+             match = re.search(patron, texto)
+             if match:
+                valor_str = match.group(1)
+                datos_temp[campo] = normalizar_numero(valor_str)
+                logging.info(f"Estrategia 1 - Encontrado {campo}: {valor_str} usando patrón #{i+1}: {patron}")
+                break # Pasar al siguiente campo si se encontró
+
+    prima_neta = datos_temp.get('prima_neta')
+    gastos_expedicion = datos_temp.get('gastos_expedicion')
+    iva = datos_temp.get('iva')
+    precio_total = datos_temp.get('precio_total')
+
+    # Intentar con el patrón de bloque vertical si es FORMATO_VERTICAL y no se encontraron todos
+    if formato == "FORMATO_VERTICAL" and not all([prima_neta, gastos_expedicion, iva, precio_total]):
+         logging.info("Intentando Estrategia 1b: Patrón de bloque vertical específico...")
+         match_bloque = re.search(patron_bloque_vertical, texto, re.MULTILINE)
+         if match_bloque:
+             logging.info("Encontrado patrón de bloque vertical.")
+             # Asignar solo si no se encontraron previamente
+             if not prima_neta: prima_neta = normalizar_numero(match_bloque.group(1))
+             if not gastos_expedicion: gastos_expedicion = normalizar_numero(match_bloque.group(2))
+             if not iva: iva = normalizar_numero(match_bloque.group(3))
+             if not precio_total: precio_total = normalizar_numero(match_bloque.group(4))
+             logging.info(f"Valores del bloque: PN={match_bloque.group(1)}, GE={match_bloque.group(2)}, IVA={match_bloque.group(3)}, PT={match_bloque.group(4)}")
+
+
+    # --- Estrategia 2: Patrones Genéricos (si Estrategia 1 falló) ---
+    if not all([prima_neta, gastos_expedicion, iva, precio_total]):
+        logging.info("Intentando Estrategia 2: Patrones genéricos...")
+        patrones_genericos = {
+             'prima_neta': r'Prima\s+neta[\s\n]*?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\b',
+             'tasa_financiamiento': r'Tasa\s+de\s+financiamiento[\s\n]*?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\b',
+             'gastos_expedicion': r'Gastos\s+por\s+expedición[\s\n]*?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\b',
+             'iva': r'I\.V\.A\.[\s\n]*?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\b',
+             'precio_total': r'(?:Precio\s+total|Total\s+a\s+pagar)[\s\n]*?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\b'
         }
-        
-        # Construir patrones específicos según el formato
-        patrones_especificos = {}
-        if formato == "FORMATO_LINEAL":
-            # Etiqueta seguido de espacios y número en la misma línea
-            for k, v in patrones_base.items():
-                patrones_especificos[k] = [f'{v}\\s+(\\d{{1,3}}(?:,\\d{{3}})*(?:\\.\\d{{2}})?)\\b']
-        elif formato == "FORMATO_VERTICAL":
-            # Etiqueta seguido de newline (con o sin espacios) y número
-             for k, v in patrones_base.items():
-                 # Priorizar patrón con valor en la línea siguiente inmediata
-                 p1 = f'{v}\\s*\\n\\s*(\\d{{1,3}}(?:,\\d{{3}})*(?:\\.\\d{{2}})?)\\b'
-                 # Patrón para bloque O_6731931 (ya no necesario aquí si se maneja aparte, pero como fallback)
-                 p2 = f'{v}\\s*\\n([\\d\\.,]+)' # Menos específico
-                 patrones_especificos[k] = [p1, p2]
-             # Patrón específico para el bloque completo O_6731931
-             patron_bloque_vertical = r'Prima neta\\s*\\nTasa de financiamiento\\s*\\nGastos por expedición\\s*\\nI\\.V\\.A\\.\\s*\\nPrecio total\\s*\\n(\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?)\\s*\\n(?:\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?)\\s*\\n(\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?)\\s*\\n(\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?)\\s*\\n(\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?)'
+        datos_temp_gen = {}
+        for campo, patron in patrones_genericos.items():
+             match = re.search(patron, texto)
+             if match:
+                 valor_str = match.group(1)
+                 datos_temp_gen[campo] = normalizar_numero(valor_str)
+                 logging.info(f"Estrategia 2 - Encontrado {campo}: {valor_str} usando patrón: {patron}")
 
-        else: # FORMATO_DESCONOCIDO o FORMATO_TABLA (tratar genéricamente)
-             # Intentar ambos patrones (lineal y vertical) más uno genérico
-             for k, v in patrones_base.items():
-                patrones_especificos[k] = [
-                    f'{v}\\s+(\\d{{1,3}}(?:,\\d{{3}})*(?:\\.\\d{{2}})?)\\b', # Lineal
-                    f'{v}\\s*\\n\\s*(\\d{{1,3}}(?:,\\d{{3}})*(?:\\.\\d{{2}})?)\\b', # Vertical
-                    f'{v}[\\s\\n]*?(\\d{{1,3}}(?:,\\d{{3}})*(?:\\.\\d{{2}})?)\\b' # Genérico
-                ]
-        
-        # Aplicar patrones específicos
-        datos_temp = {}
-        for campo, lista_patrones in patrones_especificos.items():
-             for i, patron in enumerate(lista_patrones):
-                 match = re.search(patron, texto_pdf)
-                 if match:
-                    valor_str = match.group(1)
-                    datos_temp[campo] = normalizar_numero(valor_str)
-                    logging.info(f"Estrategia 1 - Encontrado {campo}: {valor_str} usando patrón #{i+1}: {patron}")
-                    break # Pasar al siguiente campo si se encontró
-
-        prima_neta = datos_temp.get('prima_neta')
-        gastos_expedicion = datos_temp.get('gastos_expedicion')
-        iva = datos_temp.get('iva')
-        precio_total = datos_temp.get('precio_total')
-
-        # Intentar con el patrón de bloque vertical si es FORMATO_VERTICAL y no se encontraron todos
-        if formato == "FORMATO_VERTICAL" and not all([prima_neta, gastos_expedicion, iva, precio_total]):
-             logging.info("Intentando Estrategia 1b: Patrón de bloque vertical específico...")
-             match_bloque = re.search(patron_bloque_vertical, texto_pdf, re.MULTILINE)
-             if match_bloque:
-                 logging.info("Encontrado patrón de bloque vertical.")
-                 # Asignar solo si no se encontraron previamente
-                 if not prima_neta: prima_neta = normalizar_numero(match_bloque.group(1))
-                 if not gastos_expedicion: gastos_expedicion = normalizar_numero(match_bloque.group(2))
-                 if not iva: iva = normalizar_numero(match_bloque.group(3))
-                 if not precio_total: precio_total = normalizar_numero(match_bloque.group(4))
-                 logging.info(f"Valores del bloque: PN={match_bloque.group(1)}, GE={match_bloque.group(2)}, IVA={match_bloque.group(3)}, PT={match_bloque.group(4)}")
+        # Asignar solo si no se encontraron previamente
+        if not prima_neta: prima_neta = datos_temp_gen.get('prima_neta')
+        if not tasa_financiamiento: tasa_financiamiento = datos_temp_gen.get('tasa_financiamiento')
+        if not gastos_expedicion: gastos_expedicion = datos_temp_gen.get('gastos_expedicion')
+        if not iva: iva = datos_temp_gen.get('iva')
+        if not precio_total: precio_total = datos_temp_gen.get('precio_total')
 
 
-        # --- Estrategia 2: Patrones Genéricos (si Estrategia 1 falló) ---
-        if not all([prima_neta, gastos_expedicion, iva, precio_total]):
-            logging.info("Intentando Estrategia 2: Patrones genéricos...")
-            patrones_genericos = {
-                 'prima_neta': r'Prima\s+neta[\s\n]*?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\b',
-                 'tasa_financiamiento': r'Tasa\s+de\s+financiamiento[\s\n]*?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\b',
-                 'gastos_expedicion': r'Gastos\s+por\s+expedición[\s\n]*?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\b',
-                 'iva': r'I\.V\.A\.[\s\n]*?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\b',
-                 'precio_total': r'(?:Precio\s+total|Total\s+a\s+pagar)[\s\n]*?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\b'
-            }
-            datos_temp_gen = {}
-            for campo, patron in patrones_genericos.items():
-                 match = re.search(patron, texto_pdf)
-                 if match:
-                     valor_str = match.group(1)
-                     datos_temp_gen[campo] = normalizar_numero(valor_str)
-                     logging.info(f"Estrategia 2 - Encontrado {campo}: {valor_str} usando patrón: {patron}")
+    # --- Estrategia 3: Texto Crudo (pdftotext -raw) ---
+    if not all([prima_neta, gastos_expedicion, iva, precio_total]):
+        logging.info("Intentando Estrategia 3: Texto crudo (pdftotext -raw)...")
+        try:
+            result = subprocess.run(['pdftotext', '-raw', pdf_path, '-'], capture_output=True, text=True, check=True)
+            texto_crudo = result.stdout
+            logging.debug(f"Texto crudo obtenido (primeros 500 chars): {texto_crudo[:500]}")
+            resultado_crudo = extraer_desde_texto_crudo(texto_crudo)
+            if resultado_crudo:
+                logging.info("Valores encontrados desde texto crudo.")
+                # Asignar solo si no se encontraron previamente
+                if not prima_neta: prima_neta = resultado_crudo.get('prima_neta')
+                if not tasa_financiamiento: tasa_financiamiento = resultado_crudo.get('tasa_financiamiento') # Obtener TASA
+                if not gastos_expedicion: gastos_expedicion = resultado_crudo.get('gastos_expedicion')
+                if not iva: iva = resultado_crudo.get('iva')
+                if not precio_total: precio_total = resultado_crudo.get('precio_total')
+            else:
+                logging.warning("No se encontraron valores desde texto crudo.")
+        except FileNotFoundError:
+             logging.error("Comando 'pdftotext' no encontrado. Asegúrate de que esté instalado y en el PATH.")
+        except subprocess.CalledProcessError as e:
+             logging.error(f"Error al ejecutar pdftotext: {e}")
+        except Exception as e:
+            logging.error(f"Error inesperado al procesar texto crudo: {str(e)}")
 
-            # Asignar solo si no se encontraron previamente
-            if not prima_neta: prima_neta = datos_temp_gen.get('prima_neta')
-            if not tasa_financiamiento: tasa_financiamiento = datos_temp_gen.get('tasa_financiamiento')
-            if not gastos_expedicion: gastos_expedicion = datos_temp_gen.get('gastos_expedicion')
-            if not iva: iva = datos_temp_gen.get('iva')
-            if not precio_total: precio_total = datos_temp_gen.get('precio_total')
-
-
-        # --- Estrategia 3: Texto Crudo (pdftotext -raw) ---
-        if not all([prima_neta, gastos_expedicion, iva, precio_total]):
-            logging.info("Intentando Estrategia 3: Texto crudo (pdftotext -raw)...")
-            try:
-                result = subprocess.run(['pdftotext', '-raw', pdf_path, '-'], capture_output=True, text=True, check=True)
-                texto_crudo = result.stdout
-                logging.debug(f"Texto crudo obtenido (primeros 500 chars): {texto_crudo[:500]}")
-                resultado_crudo = extraer_desde_texto_crudo(texto_crudo)
-                if resultado_crudo:
-                    logging.info("Valores encontrados desde texto crudo.")
-                    # Asignar solo si no se encontraron previamente
-                    if not prima_neta: prima_neta = resultado_crudo.get('prima_neta')
-                    if not tasa_financiamiento: tasa_financiamiento = resultado_crudo.get('tasa_financiamiento') # Obtener TASA
-                    if not gastos_expedicion: gastos_expedicion = resultado_crudo.get('gastos_expedicion')
-                    if not iva: iva = resultado_crudo.get('iva')
-                    if not precio_total: precio_total = resultado_crudo.get('precio_total')
-                else:
-                    logging.warning("No se encontraron valores desde texto crudo.")
-            except FileNotFoundError:
-                 logging.error("Comando 'pdftotext' no encontrado. Asegúrate de que esté instalado y en el PATH.")
-            except subprocess.CalledProcessError as e:
-                 logging.error(f"Error al ejecutar pdftotext: {e}")
-            except Exception as e:
-                logging.error(f"Error inesperado al procesar texto crudo: {str(e)}")
-
-        # --- Estrategia 4: Sumar Primas Individuales (Fallback para prima_neta) ---
-        if not prima_neta:
-             logging.info("Intentando Estrategia 4: Sumar primas individuales...")
-             # Busca una línea que empiece con "Prima" y tenga varios números después
-             prima_section_match = re.search(r'^Prima\\s+(\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?(?:\\s+\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?)*)', texto_pdf, re.MULTILINE)
-             if prima_section_match:
-                 numeros_primas = re.findall(r'(\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?)', prima_section_match.group(1))
-                 if numeros_primas:
-                     suma_primas = sum(normalizar_numero(n) for n in numeros_primas)
-                     prima_neta = suma_primas
-                     logging.info(f"Estrategia 4 - Encontrado prima_neta (suma de primas): {prima_neta}")
-                 else:
-                     logging.warning("Estrategia 4 - Se encontró línea de Prima pero no números.")
-        else:
-                  logging.warning("Estrategia 4 - No se encontró la sección de primas individuales.")
+    # --- Estrategia 4: Sumar Primas Individuales (Fallback para prima_neta) ---
+    if not prima_neta:
+         logging.info("Intentando Estrategia 4: Sumar primas individuales...")
+         # Busca una línea que empiece con "Prima" y tenga varios números después
+         prima_section_match = re.search(r'^Prima\\s+(\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?(?:\\s+\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?)*)', texto, re.MULTILINE)
+         if prima_section_match:
+             numeros_primas = re.findall(r'(\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?)', prima_section_match.group(1))
+             if numeros_primas:
+                 suma_primas = sum(normalizar_numero(n) for n in numeros_primas)
+                 prima_neta = suma_primas
+                 logging.info(f"Estrategia 4 - Encontrado prima_neta (suma de primas): {prima_neta}")
+             else:
+                 logging.warning("Estrategia 4 - Se encontró línea de Prima pero no números.")
+    else:
+              logging.warning("Estrategia 4 - No se encontró la sección de primas individuales.")
 
 
-        # --- Verificación Final (modificada) --- 
-        logging.info(f"Resultados finales de extracción: PN={prima_neta}, TF={tasa_financiamiento}, GE={gastos_expedicion}, IVA={iva}, PT={precio_total}")
-        # Consideramos la extracción exitosa si tenemos los 4 valores principales.
-        # Tasa de financiamiento es opcional en este punto.
-        valores_principales_ok = all([prima_neta is not None, gastos_expedicion is not None, iva is not None, precio_total is not None])
+    # --- Verificación Final (modificada) --- 
+    logging.info(f"Resultados finales de extracción: PN={prima_neta}, TF={tasa_financiamiento}, GE={gastos_expedicion}, IVA={iva}, PT={precio_total}")
+    # Consideramos la extracción exitosa si tenemos los 4 valores principales.
+    # Tasa de financiamiento es opcional en este punto.
+    valores_principales_ok = all([prima_neta is not None, gastos_expedicion is not None, iva is not None, precio_total is not None])
 
-        if not valores_principales_ok:
-            # Log detallado de qué faltó de los principales
-            faltantes = []
-            if prima_neta is None: faltantes.append("Prima Neta")
-            if gastos_expedicion is None: faltantes.append("Gastos Expedición")
-            if iva is None: faltantes.append("IVA")
-            if precio_total is None: faltantes.append("Precio Total")
-            logging.error(f"No se encontraron todos los valores principales requeridos. Faltantes: {', '.join(faltantes)}")
-            return None
-        
-        logging.info("Todos los valores principales requeridos fueron extraídos.")
-        return {
-            'prima_neta': prima_neta,
-            'tasa_financiamiento': tasa_financiamiento, # Incluir tasa (puede ser None)
-            'gastos_expedicion': gastos_expedicion,
-            'iva': iva,
-            'precio_total': precio_total,
-            'ramo': 'AUTOS', 
-            'tipo_endoso': 'A - MODIFICACIÓN DE DATOS'
-        }
-        
-    except Exception as e:
-        logging.error(f"Error fatal al procesar el archivo {pdf_path}: {str(e)}", exc_info=True) # Log con traceback
+    if not valores_principales_ok:
+        # Log detallado de qué faltó de los principales
+        faltantes = []
+        if prima_neta is None: faltantes.append("Prima Neta")
+        if gastos_expedicion is None: faltantes.append("Gastos Expedición")
+        if iva is None: faltantes.append("IVA")
+        if precio_total is None: faltantes.append("Precio Total")
+        logging.error(f"No se encontraron todos los valores principales requeridos. Faltantes: {', '.join(faltantes)}")
         return None
+    
+    logging.info("Todos los valores principales requeridos fueron extraídos.")
+    resultados["prima_neta"] = prima_neta
+    resultados["tasa_financiamiento"] = tasa_financiamiento
+    resultados["gastos_expedicion"] = gastos_expedicion
+    resultados["iva"] = iva
+    resultados["precio_total"] = precio_total
+    resultados["ramo"] = "AUTOS"
+    resultados["tipo_endoso"] = "A - MODIFICACIÓN DE DATOS"
+    return resultados
 
 def extract_endoso_b_data(text, pdf_path):
     """Extrae datos específicos para endosos tipo B."""

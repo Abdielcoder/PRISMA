@@ -7,6 +7,8 @@ from typing import Dict, Optional
 from endosos_autos_a import extraer_datos_endoso_a
 from data_ia_general_vida import procesar_archivo
 from data_ia_general_vida_individual import procesar_archivo as procesar_archivo_individual
+from data_ia_general_protgt_ordinario import procesar_archivo as procesar_archivo_protgt_ordinario
+from data_ia_general_protgt_ppr import procesar_archivo as procesar_archivo_aliados_ppr
 
 # Configuración de logging
 logging.basicConfig(
@@ -44,11 +46,36 @@ def detect_document_type(text: str) -> str:
         text (str): Texto extraído del PDF
         
     Returns:
-        str: Tipo de documento detectado ('ENDOSO_A', 'POLIZA_VIDA', 'POLIZA_VIDA_INDIVIDUAL', 'DESCONOCIDO')
+        str: Tipo de documento detectado ('ENDOSO_A', 'POLIZA_VIDA', 'POLIZA_VIDA_INDIVIDUAL', 
+                                         'PROTEGETE_ORDINARIO', 'ALIADOS_PPR', 'DESCONOCIDO')
     """
     # Normalizar el texto
     text = text.lower()
     text = re.sub(r'\s+', ' ', text)
+    
+    # Patrones para identificar Aliados+ PPR (MÁXIMA PRIORIDAD)
+    patrones_aliados_ppr = [
+        r"aliados\s*\+\s*ppr",
+        r"aliados\s*\+",
+        r"vida y ahorro",
+        r"carátula de póliza.*aliados",
+        r"aliados\+.*car[áa]tula",
+        r"aliados.*ppr",
+        r"póliza.*ahorro",
+        r"vida.*ahorro",
+        r"seguro.*ahorro",
+        r"aliados\s*mas",
+        r"ahorro.*programado",
+        r"seguro.*aliados"
+    ]
+    
+    # Patrones para identificar Protegete Ordinario
+    patrones_protegete_ordinario = [
+        r"vida protgt ordinario",
+        r"protgt ordinario de vida",
+        r"vida protegete ordinario",
+        r"protegete ordinario de vida"
+    ]
     
     # Patrones para identificar póliza de vida individual
     patrones_vida_individual = [
@@ -82,19 +109,33 @@ def detect_document_type(text: str) -> str:
         r"endoso\s+tipo\s+a\s+modificación"
     ]
     
-    # Buscar patrones de póliza de vida individual
+    # **Reordenamiento de la lógica de detección**
+    
+    # 1. Buscar patrones de Aliados+ PPR primero
+    for patron in patrones_aliados_ppr:
+        if re.search(patron, text):
+            logger.info(f"Detectada póliza Aliados+ PPR con patrón: {patron}")
+            return "ALIADOS_PPR"
+            
+    # 2. Buscar patrones de Protegete Ordinario
+    for patron in patrones_protegete_ordinario:
+        if re.search(patron, text):
+            logger.info(f"Detectada póliza Protegete Ordinario con patrón: {patron}")
+            return "PROTEGETE_ORDINARIO"
+            
+    # 3. Buscar patrones de póliza de vida individual
     for patron in patrones_vida_individual:
         if re.search(patron, text):
             logger.info(f"Detectada póliza de vida individual con patrón: {patron}")
             return "POLIZA_VIDA_INDIVIDUAL"
-    
-    # Buscar patrones de póliza de vida
+            
+    # 4. Buscar patrones de póliza de vida (genérico)
     for patron in patrones_vida:
         if re.search(patron, text):
             logger.info(f"Detectada póliza de vida con patrón: {patron}")
             return "POLIZA_VIDA"
-    
-    # Buscar patrones de endoso tipo A
+            
+    # 5. Buscar patrones de endoso tipo A (al final)
     for patron in patrones_endoso_a:
         if re.search(patron, text):
             logger.info(f"Detectado endoso tipo A con patrón: {patron}")
@@ -131,37 +172,28 @@ def validate_endoso(pdf_path: str) -> Dict:
         dict: Diccionario con el resultado de la validación y los datos extraídos
     """
     doc = None # Inicializar doc a None
+    texto = "" # Inicializar texto
     try:
-        # --- Añadir log específico para la apertura ---
         logger.info(f"Intentando abrir PDF: {pdf_path} con fitz (PyMuPDF)...")
-        # Abrir el PDF
         doc = fitz.open(pdf_path)
         logger.info(f"PDF {pdf_path} abierto correctamente con fitz.")
-        # --- Fin del cambio ---
         
         if doc.page_count < 1:
             logger.error(f"El PDF {pdf_path} no tiene páginas.")
             return {"error": "El PDF no tiene páginas"}
             
-        # Extraer texto para la detección
-        try:
-            from PyPDF2 import PdfReader
-            reader = PdfReader(pdf_path)
-            if len(reader.pages) > 0:
-                 texto = reader.pages[0].extract_text() # Texto extraído por PyPDF2
-            else:
-                 texto = "" # O manejar error si prefieres
-        except Exception as e_pypdf:
-             logger.warning(f"PyPDF2 no pudo extraer texto de {pdf_path}: {e_pypdf}")
-             # Fallback a fitz si PyPDF2 falla
-             logger.info(f"Intentando extraer texto con fitz para {pdf_path}...")
-             texto = doc[0].get_text()
-             if not texto:
-                 logger.error(f"fitz tampoco pudo extraer texto de {pdf_path}")
-                 return {"error": "No se pudo extraer texto del PDF con ninguna librería"}
-
-        # Detectar el tipo de documento
-        tipo_documento = detect_document_type(texto)
+        # **Extraer texto para detección SIEMPRE con fitz**
+        logger.info(f"Extrayendo texto con fitz para detección en {pdf_path}...")
+        for page_num in range(min(doc.page_count, 2)): # Leer las primeras 2 páginas para detección
+             page = doc.load_page(page_num)
+             texto += page.get_text()
+             
+        if not texto:
+             logger.error(f"fitz no pudo extraer texto de las primeras páginas de {pdf_path}")
+             return {"error": "No se pudo extraer texto del PDF para detección"}
+        
+        # Detectar el tipo de documento usando el texto extraído con fitz
+        tipo_documento = detect_document_type(texto) 
         
         # Procesar según el tipo de documento
         if tipo_documento == "ENDOSO_A":
@@ -169,15 +201,88 @@ def validate_endoso(pdf_path: str) -> Dict:
             datos_financieros = extraer_datos_endoso_a(pdf_path)
             if datos_financieros:
                 logger.info(f"Datos financieros extraídos exitosamente para {pdf_path}.")
+                # Asegurarse de que todos los datos financieros incluyan prima_mensual
+                datos_financieros_completos = {
+                    "prima_neta": datos_financieros.get("prima_neta", "0"),
+                    "gastos_expedicion": datos_financieros.get("gastos_expedicion", "0"),
+                    "iva": datos_financieros.get("iva", "0"),
+                    "precio_total": datos_financieros.get("precio_total", "0"),
+                    "tasa_financiamiento": datos_financieros.get("tasa_financiamiento", "0"),
+                    "prima_mensual": datos_financieros.get("prima_mensual", "0")
+                }
                 return {
                     "tipo_documento": "ENDOSO_A",
                     "tipo_endoso": "A",
                     "descripcion": "MODIFICACIÓN DE DATOS",
-                    "datos_financieros": datos_financieros
+                    "datos_financieros": datos_financieros_completos
                 }
             else:
                 logger.error(f"Se detectó Endoso A para {pdf_path}, pero no se pudieron extraer los datos financieros.")
                 return {"error": "Se detectó Endoso A, pero no se pudieron extraer los datos financieros"}
+        
+        elif tipo_documento == "ALIADOS_PPR":
+            logger.info(f"Póliza Aliados+ PPR detectada para {pdf_path}. Procediendo a extraer datos.")
+            
+            # Crear directorio de salida temporal si no existe
+            output_dir = os.path.join(os.path.dirname(pdf_path), "output")
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Procesar el archivo y obtener datos con el script para pólizas Aliados+ PPR
+            datos_aliados_ppr = procesar_archivo_aliados_ppr(pdf_path, output_dir)
+            
+            if datos_aliados_ppr:
+                logger.info(f"Datos de póliza Aliados+ PPR extraídos exitosamente para {pdf_path}.")
+                # Convertir los datos a formato financiero esperado por el frontend
+                datos_financieros = {
+                    "prima_neta": datos_aliados_ppr.get("Prima Neta", "0"),
+                    "gastos_expedicion": "0",  # No aplica para este tipo de pólizas
+                    "iva": datos_aliados_ppr.get("I.V.A.", "0"),
+                    "precio_total": datos_aliados_ppr.get("Prima anual total", "0"),
+                    "tasa_financiamiento": "0",  # No aplica para este tipo de pólizas
+                    "prima_mensual": datos_aliados_ppr.get("Prima mensual", "0")
+                }
+                
+                return {
+                    "tipo_documento": "POLIZA_ALIADOS_PPR",
+                    "descripcion": "PÓLIZA ALIADOS+ PPR",
+                    "datos_financieros": datos_financieros,
+                    "datos_completos": datos_aliados_ppr
+                }
+            else:
+                logger.error(f"Se detectó póliza Aliados+ PPR para {pdf_path}, pero no se pudieron extraer los datos.")
+                return {"error": "Se detectó póliza Aliados+ PPR, pero no se pudieron extraer los datos"}
+        
+        elif tipo_documento == "PROTEGETE_ORDINARIO":
+            logger.info(f"Póliza Protegete Ordinario detectada para {pdf_path}. Procediendo a extraer datos.")
+            
+            # Crear directorio de salida temporal si no existe
+            output_dir = os.path.join(os.path.dirname(pdf_path), "output")
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Procesar el archivo y obtener datos con el script para pólizas Protegete Ordinario
+            datos_protegete = procesar_archivo_protgt_ordinario(pdf_path, output_dir)
+            
+            if datos_protegete:
+                logger.info(f"Datos de póliza Protegete Ordinario extraídos exitosamente para {pdf_path}.")
+                # Convertir los datos a formato financiero esperado por el frontend
+                datos_financieros = {
+                    "prima_neta": datos_protegete.get("Prima Neta", "0"),
+                    "gastos_expedicion": "0",  # No aplica para este tipo de pólizas
+                    "iva": datos_protegete.get("I.V.A.", "0"),
+                    "precio_total": datos_protegete.get("Prima anual total", "0"),
+                    "tasa_financiamiento": "0",  # No aplica para este tipo de pólizas
+                    "prima_mensual": datos_protegete.get("Prima mensual", "0")
+                }
+                
+                return {
+                    "tipo_documento": "POLIZA_VIDA",
+                    "descripcion": "PÓLIZA PROTEGETE ORDINARIO",
+                    "datos_financieros": datos_financieros,
+                    "datos_completos": datos_protegete
+                }
+            else:
+                logger.error(f"Se detectó póliza Protegete Ordinario para {pdf_path}, pero no se pudieron extraer los datos.")
+                return {"error": "Se detectó póliza Protegete Ordinario, pero no se pudieron extraer los datos"}
         
         elif tipo_documento == "POLIZA_VIDA_INDIVIDUAL":
             logger.info(f"Póliza de vida individual detectada para {pdf_path}. Procediendo a extraer datos.")
@@ -197,11 +302,12 @@ def validate_endoso(pdf_path: str) -> Dict:
                     "gastos_expedicion": "0",  # No aplica para pólizas de vida
                     "iva": datos_vida.get("I.V.A.", "0"),
                     "precio_total": datos_vida.get("Prima anual total", "0"),
-                    "tasa_financiamiento": "0"  # No aplica para pólizas de vida
+                    "tasa_financiamiento": "0",  # No aplica para pólizas de vida
+                    "prima_mensual": datos_vida.get("Prima mensual", "0")
                 }
                 
                 return {
-                    "tipo_documento": "POLIZA_VIDA",  # Usamos el mismo tipo para mantener compatibilidad con el frontend
+                    "tipo_documento": "POLIZA_VIDA",
                     "descripcion": "PÓLIZA DE VIDA INDIVIDUAL",
                     "datos_financieros": datos_financieros,
                     "datos_completos": datos_vida
@@ -228,7 +334,8 @@ def validate_endoso(pdf_path: str) -> Dict:
                     "gastos_expedicion": "0",  # No aplica para pólizas de vida
                     "iva": datos_vida.get("I.V.A.", "0"),
                     "precio_total": datos_vida.get("Prima anual total", "0"),
-                    "tasa_financiamiento": "0"  # No aplica para pólizas de vida
+                    "tasa_financiamiento": "0",  # No aplica para pólizas de vida
+                    "prima_mensual": datos_vida.get("Prima mensual", "0")
                 }
                 
                 return {
@@ -246,11 +353,11 @@ def validate_endoso(pdf_path: str) -> Dict:
             return {"error": "Tipo de documento no soportado o desconocido"}
             
     except Exception as e:
-        # Capturar errores específicos
         logger.error(f"Error general al validar documento {pdf_path}: {str(e)}", exc_info=True)
         return {"error": f"Error interno al procesar el PDF: {str(e)}"}
     finally:
         if doc:
+            logger.info(f"Cerrando documento PDF: {pdf_path}")
             doc.close()
 
 if __name__ == "__main__":

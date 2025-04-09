@@ -130,71 +130,108 @@ def upload_file():
         if file_path and file_path.startswith(tempfile.gettempdir()):
             os.unlink(file_path)
         
-        # Convertir los nombres de las claves al formato esperado por el frontend
-        datos_financieros = resultado.get("datos_financieros", {})
-        datos_formateados = {
-            "Prima neta": datos_financieros.get("prima_neta", 0.0),
-            "Gastos por expedición": datos_financieros.get("gastos_expedicion", 0.0),
-            "I.V.A.": datos_financieros.get("iva", 0.0),
-            "Precio total": datos_financieros.get("precio_total", 0.0),
-            "Tasa de financiamiento": datos_financieros.get("tasa_financiamiento", None)
+        # **1. Definir la estructura base completa con valores por defecto**
+        respuesta_poliza_base = {
+            "Clave Agente": "No disponible", "Coaseguro": "No disponible", "Cobertura Básica": "No disponible",
+            "Cobertura Nacional": "No disponible", "Coberturas adicionales con costo": "No disponible",
+            "Código Postal": "No disponible", "Deducible": "No disponible", "Deducible Cero por Accidente": "No disponible",
+            "Domicilio del asegurado": "No disponible", "Domicilio del contratante": "No disponible",
+            "Fecha de emisión": "No disponible", "Fecha de fin de vigencia": "No disponible",
+            "Fecha de inicio de vigencia": "No disponible", "Frecuencia de pago": "No disponible",
+            "Gama Hospitalaria": "No disponible", "I.V.A.": "0.00", "Nombre del agente": "No disponible",
+            "Nombre del asegurado titular": "No disponible", "Nombre del contratante": "No disponible",
+            "Nombre del plan": "No disponible", "Número de póliza": "No disponible",
+            "Periodo de pago de siniestro": "No disponible", "Plazo de pago": "No disponible",
+            "Prima Neta": "0.00", "Prima anual total": "0.00", "Prima mensual": "0.00", 
+            "R.F.C.": "No disponible", "Teléfono": "No disponible", "Url": "No disponible", 
+            "Suma asegurada": "0.00", "Moneda": "No disponible"
+            # Añadir aquí cualquier otro campo que pueda existir en algún formato
         }
-        
-        # Preparar la respuesta base
+
+        respuesta_financiera_base = {
+            "Prima neta": "0.00",
+            "Gastos por expedición": "0.00",
+            "I.V.A.": "0.00",
+            "Precio total": "0.00",
+            "Tasa de financiamiento": "0.00",
+            "Prima mensual": "0.00"
+        }
+
+        # **2. Rellenar datos desde el resultado del procesamiento**
+        datos_completos_extraidos = resultado.get("datos_completos")
+        datos_financieros_extraidos = resultado.get("datos_financieros")
+
+        if datos_completos_extraidos:
+            logger.info(f"Rellenando estructura base con datos_completos para {resultado.get('descripcion')}")
+            for key, default_value in respuesta_poliza_base.items():
+                # Usar el valor extraído si existe y no es "0" o None (a menos que el default sea numérico)
+                valor_extraido = datos_completos_extraidos.get(key)
+                if valor_extraido is not None and valor_extraido != "0":
+                    respuesta_poliza_base[key] = str(valor_extraido) # Convertir a string por si acaso
+                # Si el valor extraído es None o "0", pero el default es numérico ("0.00"), mantener "0.00"
+                elif (valor_extraido is None or valor_extraido == "0") and isinstance(default_value, str) and default_value == "0.00":
+                     respuesta_poliza_base[key] = "0.00"
+                # En otros casos (valor no encontrado o es "0" y default no es numérico), mantener default
+                
+        if datos_financieros_extraidos:
+             logger.info(f"Rellenando estructura financiera base con datos_financieros para {resultado.get('descripcion')}")
+             # Mapear claves de backend a frontend
+             respuesta_financiera_base["Prima neta"] = datos_financieros_extraidos.get("prima_neta", "0.00")
+             respuesta_financiera_base["Gastos por expedición"] = datos_financieros_extraidos.get("gastos_expedicion", "0.00")
+             respuesta_financiera_base["I.V.A."] = datos_financieros_extraidos.get("iva", "0.00")
+             respuesta_financiera_base["Precio total"] = datos_financieros_extraidos.get("precio_total", "0.00")
+             respuesta_financiera_base["Tasa de financiamiento"] = datos_financieros_extraidos.get("tasa_financiamiento", "0.00")
+             respuesta_financiera_base["Prima mensual"] = datos_financieros_extraidos.get("prima_mensual", "0.00")
+
+        # **3. Formatear valores numéricos en ambas estructuras**
+        campos_numericos_poliza = ["Prima Neta", "Prima anual total", "Prima mensual", "Suma asegurada", "I.V.A."]
+        for key in campos_numericos_poliza:
+            if key in respuesta_poliza_base:
+                 try:
+                     valor_num = float(str(respuesta_poliza_base[key]).replace(',',''))
+                     respuesta_poliza_base[key] = f"{valor_num:.2f}"
+                 except (ValueError, TypeError):
+                      respuesta_poliza_base[key] = "0.00" # Default si la conversión falla
+
+        for key in respuesta_financiera_base:
+            try:
+                valor_num = float(str(respuesta_financiera_base[key]).replace(',',''))
+                respuesta_financiera_base[key] = f"{valor_num:.2f}"
+            except (ValueError, TypeError):
+                 respuesta_financiera_base[key] = "0.00"
+
+        # Asegurarse de que los datos financieros incluyan el ramo y tipo_endoso para el frontend
+        if resultado.get("tipo_documento") == "ENDOSO_A":
+            respuesta_financiera_base["ramo"] = "AUTOS"
+            respuesta_financiera_base["tipo_endoso"] = resultado.get("descripcion") or "A - MODIFICACIÓN DE DATOS"
+        elif resultado.get("tipo_documento") == "POLIZA_ALIADOS_PPR":
+            respuesta_financiera_base["ramo"] = "VIDA"
+            respuesta_financiera_base["tipo_endoso"] = resultado.get("descripcion") or "PÓLIZA ALIADOS+ PPR"
+        elif resultado.get("tipo_documento") == "POLIZA_VIDA":
+            respuesta_financiera_base["ramo"] = "VIDA"
+            respuesta_financiera_base["tipo_endoso"] = resultado.get("descripcion") or "PÓLIZA DE VIDA"
+        else:
+            # Para cualquier otro tipo de documento, usar valores genéricos
+            respuesta_financiera_base["ramo"] = "OTRO"
+            respuesta_financiera_base["tipo_endoso"] = resultado.get("descripcion") or "DOCUMENTO"
+
+        # Preparar la respuesta final JSON
         respuesta = {
             "message": "Archivo procesado correctamente",
             "file_name": file_name,
             "preview": preview,
             "pdf_data": pdf_data,
-            "financial_data": datos_formateados, # Inicialmente con datos formateados estándar
-            "document_type": resultado.get("tipo_documento", "DESCONOCIDO"),
-            "description": resultado.get("descripcion", "")
+            "financial_data": respuesta_financiera_base, # Estructura financiera rellenada y formateada
+            "poliza_data": respuesta_poliza_base,      # Estructura completa de póliza rellenada y formateada
+            "document_type": resultado.get("tipo_documento", "DESCONOCIDO"), # Mantener para info
+            "description": resultado.get("descripcion", "")              # Mantener para info
         }
         
-        # Para pólizas de vida (tanto regular como individual), añadir datos completos
-        if resultado.get("tipo_documento") == "POLIZA_VIDA" and "datos_completos" in resultado:
-            # Enviar todos los datos completos de la póliza, sin filtrar
-            respuesta["poliza_data"] = resultado["datos_completos"]
-            
-            # Registramos el formato específico para debugging
-            logger.info(f"Descripción de póliza: {resultado.get('descripcion', 'No hay descripción')}")
-            
-            # Obtener datos de la póliza extraída
-            datos_poliza = resultado["datos_completos"]
-            
-            # Reconstruir 'datos_formateados' específicamente para pólizas de vida
-            # Usando los valores de datos_poliza y asegurando que sean strings.
-            datos_formateados_vida = { # Usar un nombre diferente temporalmente para evitar confusión
-                "Prima neta": datos_poliza.get("Prima Neta", "0.00"),
-                # Usar '0.00' como default para Gastos e IVA si no vienen de datos_financieros iniciales
-                "Gastos por expedición": datos_financieros.get("gastos_expedicion", "0.00"), 
-                "I.V.A.": datos_poliza.get("I.V.A.", "0.00"),
-                "Precio total": datos_poliza.get("Prima anual total", "0.00"),
-                # Usar '0.00' también para Tasa en pólizas de vida
-                "Tasa de financiamiento": datos_financieros.get("tasa_financiamiento", "0.00") 
-            }
-            
-            # Asegurarse de que los valores '0' sean '0.00'
-            for key in ["Prima neta", "Gastos por expedición", "I.V.A.", "Precio total", "Tasa de financiamiento"]:
-                if datos_formateados_vida[key] == "0":
-                    datos_formateados_vida[key] = "0.00"
-            
-            # Actualizar la respuesta con los datos formateados específicamente para vida
-            respuesta["financial_data"] = datos_formateados_vida # Actualizar el campo en respuesta
-            
-            # Registrar los valores para depuración
-            logger.info(f"Enviando Prima Neta (en financial_data): {respuesta['financial_data']['Prima neta']}")
-            logger.info(f"Enviando Prima anual total (en financial_data): {respuesta['financial_data']['Precio total']}")
-            logger.info(f"Enviando datos completos de póliza en poliza_data.")
-        
-        # El resto de la respuesta ya tiene financial_data (actualizado si es póliza) y poliza_data (si aplica)
-        # >>> Log detallado de la respuesta ANTES de jsonify <<<
-        logger.debug(f"Respuesta a jsonify: {respuesta}") 
+        logger.debug(f"Respuesta final a jsonify: {json.dumps(respuesta, indent=2)}") 
         return jsonify(respuesta)
         
     except Exception as e:
         logger.error(f"Error en upload_file: {str(e)}")
-        # Log detallado del error
         logger.exception("Detalle del error en upload_file:") 
         return jsonify({"error": str(e)}), 500
 
