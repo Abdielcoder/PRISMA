@@ -18,6 +18,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Variable global para modo debug
+DEBUG = os.environ.get("DEBUG", "0") == "1"
+
+def debug_print(mensaje, valor=None):
+    """
+    Imprime información de debugging si DEBUG=1
+    """
+    if DEBUG:
+        if valor is not None:
+            print(f"DEBUG: {mensaje}: '{valor}'")
+        else:
+            print(f"DEBUG: {mensaje}")
+
 def normalizar_numero(valor: str) -> str:
     """
     Normaliza un valor numérico extraído, conservando el formato original para mantener
@@ -82,7 +95,24 @@ def extraer_datos_poliza_vida_protgt(pdf_path: str) -> Dict:
         doc = fitz.open(pdf_path)
         texto_completo = ""
         for page in doc:
-            texto_completo += page.get_text("text", sort=True) + "\n" # Usar sort=True para orden de lectura
+            # Usar múltiples métodos de extracción para mayor robustez
+            texto_con_sort = page.get_text("text", sort=True) + "\n"
+            texto_sin_sort = page.get_text("text", sort=False) + "\n"
+            texto_blocks = page.get_text("blocks") + "\n"
+            
+            # Combinar los resultados
+            texto_completo += texto_con_sort
+            # Añadir un separador para identificar fácilmente los diferentes métodos en logs
+            texto_completo += "--- TEXTO SIN SORT ---\n" + texto_sin_sort
+            texto_completo += "--- TEXTO BLOCKS ---\n" + texto_blocks
+            
+        # Guardar el texto extraído para debugging
+        debug_dir = os.path.join(os.path.dirname(pdf_path), "debug")
+        os.makedirs(debug_dir, exist_ok=True)
+        with open(os.path.join(debug_dir, "texto_extraido.txt"), "w", encoding="utf-8") as f:
+            f.write(texto_completo)
+            
+        logging.info(f"Texto extraído guardado para debugging en {os.path.join(debug_dir, 'texto_extraido.txt')}")
         doc.close()
 
         # Detectar tipo de documento
@@ -92,11 +122,11 @@ def extraer_datos_poliza_vida_protgt(pdf_path: str) -> Dict:
 
         # Patrones específicos para el formato VIDA PROTGT
         patrones = {
-            "Clave Agente": r'Agente:?\s+(\d+)|Agente:\s+(\d{6})',
-            "Nombre del agente": r'(?:Agente:?\s+\d+\s+)([A-ZÁ-Ú\s,.]+?)(?=\s+Promotor:|$)|(?:\d{6}\s+)([A-ZÁ-Ú\s,.]+?)(?=\s+Promotor:|$)',
-            "Nombre del asegurado titular": r'Datos del asegurado\s+Nombre:\s+([A-ZÁ-Ú\s,.]+?)(?=\s+Fecha|$)|Nombre:\s+([A-ZÁ-Ú\s,.]+?)(?=\s+Domicilio|$)',
-            "Nombre del contratante": r'Datos del contratante\s+Nombre:\s+([A-ZÁ-Ú\s,.]+?)(?=\s+Domicilio|$)|Nombre:\s+([A-ZÁ-Ú\s,.]+?)(?=\s+Fecha|$)',
-            "Domicilio del contratante": r'Domicilio:\s+(.*?)(?=\s+R\.F\.C\.:|$)|Domicilio:\s+(.*?)(?=\s+Teléfono:|$)',
+            "Clave Agente": r'Agente:?\s+(\d+)|Agente:\s+(\d{6})|Agente\s+(\d{6})',
+            "Nombre del agente": r'(?:Agente:?\s+\d+\s+)([A-ZÁ-Ú\s,.]+?)(?=\s+Promotor:|$)|(?:\d{6}\s+)([A-ZÁ-Ú\s,.]+?)(?=\s+Promotor:|$)|Agente[:\s]+\d+[:\s]+([A-ZÁ-Ú\s,.]+)',
+            "Nombre del asegurado titular": r'(?:Datos del asegurado|Asegurado)[:\s]+(?:Nombre|NOMBRE)[:\s]+([A-ZÁ-Ú\s,.]+?)(?=\s+(?:Fecha|Domicilio|R\.F\.C\.|CURP))|(?:Nombre|NOMBRE)[:\s]+([A-ZÁ-Ú\s,.]+?)(?=\s+(?:Domicilio|R\.F\.C\.|CURP))',
+            "Nombre del contratante": r'(?:Datos del contratante|Contratante)[:\s]+(?:Nombre|NOMBRE)[:\s]+([A-ZÁ-Ú\s,.]+?)(?=\s+(?:Domicilio|R\.F\.C\.|CURP))|(?:Nombre|NOMBRE)[:\s]+([A-ZÁ-Ú\s,.]+?)(?=\s+(?:Domicilio|R\.F\.C\.|CURP))',
+            "Domicilio del contratante": r'Domicilio[:\s]+(.*?)(?=\s+R\.F\.C\.:|$)|Domicilio[:\s]+(.*?)(?=\s+Teléfono:|$)',
             "Código Postal": r'(?:C\.P\.|CP|[\d,]+,)\s*(\d{5})|(\d{5}),\s+\w+',
             "Teléfono": r'Teléfono:\s+([0-9]{7,10})',
             "R.F.C.": r'R\.F\.C\.:\s+([A-Z0-9]{10,13})',
@@ -109,11 +139,11 @@ def extraer_datos_poliza_vida_protgt(pdf_path: str) -> Dict:
             "Frecuencia de pago": r'Forma de pago\s+([A-ZÁ-Ú]+)',  # Mismo patrón que Forma de pago
             "Nombre del plan": r'VIDA PROTGT',
             "Tipo de Plan": r'Tipo de Plan\s+([A-ZÁ-Ú\s]+)|VIDA PROTGT\s+([A-ZÁ-Ú\s]+)',
-            "Número de póliza": r'(?:Póliza|PÓLIZA)\s+([A-Z0-9]+H?)',
+            "Número de póliza": r'(?:Póliza|PÓLIZA)\s+([A-Z0-9]+H?)|(?:Póliza|PÓLIZA)[:\s]+([0-9]+[A-Z]?H?)|(?:FOLIO|Folio)[:\s]+([0-9]+[A-Z]?H?)|(\d{7}H)',
             "Prima Neta": r'Prima anual\s+([\d,]+\.\d{2})|Prima\s+trimestral\s+([\d,]+\.\d{2})',
-            "Prima anual total": r'Prima anual total\s+([\d,]+\.\d{2})',
+            "Prima anual total": r'Prima anual total\s+([\d,]+\.\d{2})|PRIMA ANUAL TOTAL[:\s]+([\d,]+\.\d{2})',
             "Prima mensual": r'Prima\s+mensual\s+([\d,]+\.\d{2})|Según\s+Forma\s+de\s+Pago\s+([\d,]+\.\d{2})',
-            "Suma asegurada": r'Básica\s+\d+\s+AÑOS\s+([\d,]+\.\d{2})|Suma asegurada\s+([\d,]+\.\d{2})',
+            "Suma asegurada": r'Básica\s+\d+\s+(?:AÑOS|años)\s+([\d,]+\.\d{2})|Suma asegurada\s+([\d,]+\.\d{2})|(?:SUMA ASEGURADA|Suma asegurada)[:\s]+([\d,]+\.\d{2})|Cobertura Básica[:\s]+(?:$|[\w\s]+)[:\s]+([\d,]+\.\d{2})',
             "Moneda": r'Moneda\s+([A-ZÁ-Ú]+)',
             "Centro de Utilidad": r'Centro de Utilidad:\s+(\d+)',
             "Cobertura Básica": r'Básica\s+(\d+\s+(?:años|AÑOS))\s+[\d,]+\.\d{2}|Básica\s+(\d+\s+(?:años|AÑOS))',
@@ -128,6 +158,9 @@ def extraer_datos_poliza_vida_protgt(pdf_path: str) -> Dict:
         for campo, patron in patrones.items():
             match = re.search(patron, texto_completo, re.MULTILINE | re.IGNORECASE)
             if match:
+                debug_print(f"Encontrada coincidencia para {campo} con patrón {patron}")
+                debug_print(f"Grupos encontrados para {campo}", str(match.groups()))
+                
                 if campo == "Domicilio del contratante":
                     valor = match.group(1).strip() if match.group(1) else match.group(2).strip()
                     # Limpiar saltos de línea y espacios múltiples
@@ -137,14 +170,19 @@ def extraer_datos_poliza_vida_protgt(pdf_path: str) -> Dict:
                         valor = valor[:50]
                     resultado[campo] = valor
                     logging.info(f"Domicilio extraído: {valor}")
+                    debug_print("Domicilio extraído (procesado)", valor)
                 elif campo in ["Prima Neta", "Prima anual total", "Suma asegurada"]:
                     # Para valores numéricos, aplicamos la normalización
                     if match.groups():
                         valor = next((g for g in match.groups() if g), "").strip()
                         resultado[campo] = normalizar_numero(valor)
+                        debug_print(f"Valor numérico para {campo}", valor)
+                        debug_print(f"Valor normalizado para {campo}", resultado[campo])
                     else:
                         valor = match.group(1).strip()
                         resultado[campo] = normalizar_numero(valor)
+                        debug_print(f"Valor numérico para {campo}", valor)
+                        debug_print(f"Valor normalizado para {campo}", resultado[campo])
                     logging.info(f"Encontrado {campo}: {resultado[campo]}")
                 elif campo == "Clave Agente":
                     # La clave de agente puede estar en diferentes grupos
