@@ -242,6 +242,9 @@ def upload_file():
         elif resultado.get("tipo_documento") == "SALUD_FAMILIAR":
             respuesta_financiera_base["ramo"] = "SALUD"
             respuesta_financiera_base["tipo_endoso"] = resultado.get("descripcion") or "PÓLIZA DE GASTOS MÉDICOS FAMILIAR"
+        elif resultado.get("tipo_documento") == "SALUD_COLECTIVO":
+            respuesta_financiera_base["ramo"] = "SALUD"
+            respuesta_financiera_base["tipo_endoso"] = resultado.get("descripcion") or "PÓLIZA DE GASTOS MÉDICOS COLECTIVO"
         else:
             # Para cualquier otro tipo de documento, usar valores genéricos
             respuesta_financiera_base["ramo"] = "OTRO"
@@ -260,8 +263,8 @@ def upload_file():
         }
         
         # Para documentos de salud familiar, asegurar que los campos especiales estén incluidos en la respuesta
-        if resultado.get("tipo_documento") == "SALUD_FAMILIAR":
-            logger.info("Preparando respuesta para documento de salud familiar")
+        if resultado.get("tipo_documento") in ["SALUD_FAMILIAR", "SALUD_COLECTIVO"]:
+            logger.info(f"Preparando respuesta para documento de salud tipo: {resultado.get('tipo_documento')}")
             logger.info(f"Descuento familiar: {respuesta_poliza_base['Descuento familiar']}")
             logger.info(f"Cesión de Comisión: {respuesta_poliza_base['Cesión de Comisión']}")
             logger.info(f"Recargo por pago fraccionado: {respuesta_poliza_base['Recargo por pago fraccionado']}")
@@ -331,7 +334,9 @@ def validate_file():
         # Agregar datos específicos según el tipo de documento
         if result.get('tipo_documento') == 'ENDOSO_A':
             response['tipo_endoso'] = result.get('tipo_endoso', '')
-        elif result.get('tipo_documento') in ['POLIZA_VIDA', 'POLIZA_ALIADOS_PPR', 'POLIZA_PROTGT_TEMPORAL_MN', 'POLIZA_VIDA_PROTGT', 'PROTECCION_EFECTIVA', 'PROTGT_PYME', 'SALUD_FAMILIAR']:
+        elif result.get('tipo_documento') in ['POLIZA_VIDA', 'POLIZA_ALIADOS_PPR', 'POLIZA_PROTGT_TEMPORAL_MN', 
+                                           'POLIZA_VIDA_PROTGT', 'PROTECCION_EFECTIVA', 'PROTGT_PYME', 
+                                           'SALUD_FAMILIAR', 'SALUD_FAMILIAR_VARIANTEF', 'SALUD_COLECTIVO']:
             response['datos_completos'] = result.get('datos_completos', {})
             
             # Generar URL markdown

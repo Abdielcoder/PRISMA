@@ -124,8 +124,8 @@ def extraer_datos_poliza_salud_familiar(pdf_path: str) -> Dict:
             "Ciudad del asegurado": r'Datos del Asegurado Titular.*?Ciudad:\s+([A-ZÁ-Ú\s,.]+)',
             "R.F.C.": r'R\.F\.C\.\s*:\s*([A-Z0-9]{10,13})',
             "Teléfono": r'Teléfono:\s+([0-9]{7,10})',
-            "Número de póliza": r'P[óo]liza\s+([0-9]+[A-Z0-9]*)',
-            "Solicitud": r'Solicitud\s+(\d{10,14})',
+            "Número de póliza": r'P[óo]liza\s+([0-9A-Z]+)',
+            "Solicitud": r'Solicitud\s+(\d{5,14})',
             "Tipo de Plan": r'Tipo de [Pp]lan\s+([A-Za-zÁ-Úá-ú\s]+)',
             "Fecha de inicio de vigencia": r'Fecha de inicio de vigencia\s+(\d{2}/\d{2}/\d{4})',
             "Fecha de fin de vigencia": r'Fecha de fin de vigencia\s+(\d{2}/\d{2}/\d{4})',
@@ -153,8 +153,27 @@ def extraer_datos_poliza_salud_familiar(pdf_path: str) -> Dict:
             "Promotor": r'Promotor\s*:\s*(\d+)'
         }
 
-        # Extraer valores usando patrones específicos
-        for campo, patron in patrones.items():
+        # Patrones para el formato tabular (como en la imagen proporcionada)
+        patrones_tabulares = {
+            "Número de póliza": r'Póliza\s*\n\s*([0-9A-Z]+)',
+            "Tipo de Plan": r'Tipo de plan\s*\n\s*([A-Za-zÁ-Úá-ú\s]+)',
+            "Solicitud": r'Solicitud\s*\n\s*(\d{5,14})',
+            "Fecha de inicio de vigencia": r'Fecha de inicio de vigencia\s*\n\s*(\d{2}/\d{2}/\d{4})',
+            "Fecha de fin de vigencia": r'Fecha de fin de vigencia\s*\n\s*(\d{2}/\d{2}/\d{4})',
+            "Fecha de emisión": r'Fecha de emisión\s*\n\s*(\d{2}/\d{2}/\d{4})',
+            "Frecuencia de pago": r'Frecuencia de pago\s*\n\s*([A-Za-zÁ-Úá-ú\s]+)',
+            "Tipo de pago": r'Tipo de pago\s*\n\s*([A-Za-zÁ-Úá-ú\s]+)',
+            "Prima Neta": r'Prima Neta\s*\n\s*([\d,]+\.\d{2})',
+            "Descuento familiar": r'Descuento familiar\s*\n\s*([0-9]+)',
+            "Cesión de Comisión": r'Cesión de Comisión\s*\n\s*([0-9]+)',
+            "Recargo por pago fraccionado": r'Recargo por pago fraccionado\s*\n\s*([0-9]+)',
+            "Derecho de póliza": r'Derecho de póliza\s*\n\s*([\d,]+\.\d{2})',
+            "I.V.A.": r'I\.V\.A\.\s*\n\s*([\d,]+\.\d{2})',
+            "Prima anual total": r'Prima anual total\s*\n\s*([\d,]+\.\d{2})'
+        }
+
+        # Extraer valores usando patrones específicos y patrones tabulares
+        for campo, patron in list(patrones.items()) + list(patrones_tabulares.items()):
             match = re.search(patron, texto_completo, re.MULTILINE | re.IGNORECASE)
             if match:
                 if campo in ["Domicilio del contratante", "Domicilio del asegurado"]:
@@ -195,34 +214,34 @@ def extraer_datos_poliza_salud_familiar(pdf_path: str) -> Dict:
                     if resultado[campo] != '0':
                         logging.info(f"Encontrado {campo}: {resultado[campo]}")
 
-        # Búsqueda alternativa para formatos tabulares (como en la imagen proporcionada)
-        # Intentar extraer datos de una tabla para Descuento familiar, Cesión de Comisión y Recargo por pago fraccionado
-        tabla_pattern = r'(Descuento familiar|Cesión de Comisión|Prima Neta|Recargo por pago fraccionado|Derecho de póliza|I\.V\.A\.|Prima anual total)\s*(\d+[,\d]*\.\d{2}|\d+)'
-        for match in re.finditer(tabla_pattern, texto_completo, re.MULTILINE | re.IGNORECASE):
-            campo = match.group(1).strip()
-            valor = match.group(2).strip()
-            
-            # Mapear campo a la clave correcta
-            if campo == "Descuento familiar":
-                campo_clave = "Descuento familiar"
-            elif campo == "Cesión de Comisión":
-                campo_clave = "Cesión de Comisión"
-            elif campo == "Prima Neta":
-                campo_clave = "Prima Neta"
-            elif campo == "Recargo por pago fraccionado":
-                campo_clave = "Recargo por pago fraccionado"
-            elif campo == "Derecho de póliza":
-                campo_clave = "Derecho de póliza"
-            elif campo == "I.V.A.":
-                campo_clave = "I.V.A."
-            elif campo == "Prima anual total":
-                campo_clave = "Prima anual total"
-            else:
-                campo_clave = None
-            
-            if campo_clave and (resultado[campo_clave] == "0" or not resultado[campo_clave]):
-                resultado[campo_clave] = normalizar_numero(valor)
-                logging.info(f"Encontrado en tabla {campo_clave}: {resultado[campo_clave]}")
+        # Búsqueda más específica para la tabla de datos financieros
+        financieros_pattern = r'Prima\s*\n\s*Descuento familiar\s*\n\s*(\d+)\s*\n\s*Cesión de Comisión\s*\n\s*(\d+)\s*\n\s*Prima Neta\s*\n\s*([\d,]+\.\d{2})\s*\n\s*Recargo por pago fraccionado\s*\n\s*(\d+)\s*\n\s*Derecho de póliza\s*\n\s*([\d,]+\.\d{2})\s*\n\s*I\.V\.A\.\s*\n\s*([\d,]+\.\d{2})\s*\n\s*Prima anual total\s*\n\s*([\d,]+\.\d{2})'
+        
+        match_financieros = re.search(financieros_pattern, texto_completo, re.MULTILINE)
+        if match_financieros:
+            resultado["Descuento familiar"] = normalizar_numero(match_financieros.group(1))
+            resultado["Cesión de Comisión"] = normalizar_numero(match_financieros.group(2))
+            resultado["Prima Neta"] = normalizar_numero(match_financieros.group(3))
+            resultado["Recargo por pago fraccionado"] = normalizar_numero(match_financieros.group(4))
+            resultado["Derecho de póliza"] = normalizar_numero(match_financieros.group(5))
+            resultado["I.V.A."] = normalizar_numero(match_financieros.group(6))
+            resultado["Prima anual total"] = normalizar_numero(match_financieros.group(7))
+            logging.info(f"Datos financieros extraídos del patrón completo de tabla")
+        
+        # Buscar en formato de tabla compacta
+        poliza_pattern = r'Póliza\s*\n\s*([0-9A-Z]+)\s*\n\s*Tipo de plan\s*\n\s*([A-Za-z\s]+)\s*\n\s*Solicitud\s*\n\s*(\d+)\s*\n\s*Fecha de inicio de vigencia\s*\n\s*(\d{2}/\d{2}/\d{4})\s*\n\s*Fecha de fin de vigencia\s*\n\s*(\d{2}/\d{2}/\d{4})\s*\n\s*Fecha de emisión\s*\n\s*(\d{2}/\d{2}/\d{4})\s*\n\s*Frecuencia de pago\s*\n\s*([A-Za-zÁ-Úá-ú\s]+)\s*\n\s*Tipo de pago\s*\n\s*([A-Za-zÁ-Úá-ú\s]+)'
+        
+        match_poliza = re.search(poliza_pattern, texto_completo, re.MULTILINE)
+        if match_poliza:
+            resultado["Número de póliza"] = match_poliza.group(1)
+            resultado["Tipo de Plan"] = match_poliza.group(2)
+            resultado["Solicitud"] = match_poliza.group(3)
+            resultado["Fecha de inicio de vigencia"] = match_poliza.group(4)
+            resultado["Fecha de fin de vigencia"] = match_poliza.group(5)
+            resultado["Fecha de emisión"] = match_poliza.group(6)
+            resultado["Frecuencia de pago"] = match_poliza.group(7)
+            resultado["Tipo de pago"] = match_poliza.group(8)
+            logging.info(f"Datos de póliza extraídos del patrón completo de tabla")
 
         # Extraer coberturas incluidas
         cobertura_pattern = r'Incluidos en Básica\s+(.*?)(?=Coberturas adicionales con costo|$)'
@@ -412,6 +431,39 @@ def extraer_datos_poliza_salud_familiar(pdf_path: str) -> Dict:
         if solicitud_match:
             resultado["Solicitud"] = solicitud_match.group(1).strip()
             logging.info(f"Solicitud extraída (alt): {resultado['Solicitud']}")
+
+        # Buscar fechas en formato DD/MM/YYYY
+        fecha_emision_match = re.search(r'Fecha\s+de\s+Emisi[óo]n\s*[^\d]*(\d{2}/\d{2}/\d{4})', texto_completo, re.IGNORECASE)
+        fecha_inicio_match = re.search(r'(?:Vigencia\s+desde|Fecha\s+de\s+inicio\s+de\s+vigencia)\s*[^\d]*(\d{2}/\d{2}/\d{4})', texto_completo, re.IGNORECASE)
+        fecha_fin_match = re.search(r'(?:Vigencia\s+hasta|Fecha\s+de\s+fin\s+de\s+vigencia)\s*[^\d]*(\d{2}/\d{2}/\d{4})', texto_completo, re.IGNORECASE)
+        
+        # Buscar fechas en formato DD/MMM/YYYY
+        fecha_emision_alt_match = re.search(r'Fecha\s+de\s+Emisi[óo]n\s*[^\d]*(\d{2}/[A-Za-z]{3}/\d{4})', texto_completo, re.IGNORECASE)
+        
+        # Buscar formato de vigencia con "A" como separador
+        fecha_vigencia_alt_match = re.search(r'Vigencia\s*[^\d]*(\d{2}/[A-Za-z]{3}/\d{4})\s*A\s*(\d{2}/[A-Za-z]{3}/\d{4})', texto_completo, re.IGNORECASE)
+        
+        # Asignar fechas extraídas
+        if fecha_emision_match:
+            resultado['Fecha de emisión'] = fecha_emision_match.group(1)
+            logging.info(f"Fecha de emisión extraída: {resultado['Fecha de emisión']}")
+        elif fecha_emision_alt_match:
+            resultado['Fecha de emisión'] = fecha_emision_alt_match.group(1)
+            logging.info(f"Fecha de emisión extraída (formato alt): {resultado['Fecha de emisión']}")
+        
+        if fecha_inicio_match:
+            resultado['Fecha de inicio de vigencia'] = fecha_inicio_match.group(1)
+            logging.info(f"Fecha de inicio de vigencia extraída: {resultado['Fecha de inicio de vigencia']}")
+        elif fecha_vigencia_alt_match:
+            resultado['Fecha de inicio de vigencia'] = fecha_vigencia_alt_match.group(1)
+            logging.info(f"Fecha de inicio de vigencia extraída (formato alt): {resultado['Fecha de inicio de vigencia']}")
+            
+        if fecha_fin_match:
+            resultado['Fecha de fin de vigencia'] = fecha_fin_match.group(1)
+            logging.info(f"Fecha de fin de vigencia extraída: {resultado['Fecha de fin de vigencia']}")
+        elif fecha_vigencia_alt_match:
+            resultado['Fecha de fin de vigencia'] = fecha_vigencia_alt_match.group(2)
+            logging.info(f"Fecha de fin de vigencia extraída (formato alt): {resultado['Fecha de fin de vigencia']}")
 
     except Exception as e:
         logging.error(f"Error procesando PDF de Gastos Médicos Mayores Familiar: {str(e)}", exc_info=True)

@@ -80,8 +80,7 @@ def extraer_datos_poliza_salud_familiar_variantef(pdf_path: str) -> Dict:
         "Código Postal": "0", 
         "Domicilio del contratante": "0",
         "Ciudad del contratante": "0",
-        "Estado": "0",
-        "Fecha de emisión": "0",
+        "Fecha de emisión": "0", 
         "Fecha de fin de vigencia": "0",
         "Fecha de inicio de vigencia": "0", 
         "Frecuencia de pago": "0",
@@ -96,336 +95,274 @@ def extraer_datos_poliza_salud_familiar_variantef(pdf_path: str) -> Dict:
         "Tipo de Plan": "0",
         "R.F.C.": "0",
         "Teléfono": "0", 
-        "Moneda": "0",
+        "Moneda": "MXN",
         "Prima Neta": "0",
         "Prima anual total": "0",
-        "Prima base I.V.A.": "0",
         "I.V.A.": "0",
         "Suma Asegurada": "0",
         "Deducible": "0",
         "Coaseguro": "0",
-        "Coaseguro Máximo": "0",
         "Tope de Coaseguro": "0",
+        "Gama Hospitalaria": "0",
         "Tipo de Red": "0",
         "Tabulador Médico": "0",
         "Periodo de pago de siniestro": "0",
         "Recargo por pago fraccionado": "0",
-        "Gastos de Expedición": "0",
+        "Derecho de póliza": "0",
+        "Zona Tarificación": "0",
         "Descuento familiar": "0",
-        "Cesión de Comisión": "0"
+        "Cesión de Comisión": "0",
+        "Emergencias en el Extranjero": "0",
+        "Medicamentos fuera del hospital": "0",
+        "Maternidad": "0",
+        "Protección Dental": "0",
+        "Tu Médico 24 Hrs": "0",
+        "Tipo de plan solicitado": "Individual"
     }
 
-    # Inicializar lista para coberturas amparadas
-    coberturas_amparadas = []
+    # Inicializar lista para coberturas incluidas y adicionales
+    coberturas_incluidas = []
+    coberturas_adicionales = []
+    servicios_costo = []
 
     try:
         # Extraer texto del PDF usando PyMuPDF para mejor manejo de layout
         doc = fitz.open(pdf_path)
         texto_completo = ""
+        texto_completo_raw = ""
         for page in doc:
             texto_completo += page.get_text("text", sort=True) + "\n"  # Usar sort=True para orden de lectura
+            texto_completo_raw += page.get_text() + "\n"  # Sin ordenar para capturar texto tal como está
         doc.close()
 
-        # Detectar tipo de documento
-        tipo_documento = detectar_tipo_documento(texto_completo)
-        if tipo_documento != "GASTOS_MEDICOS_FAMILIAR_VARIANTEF":
-            logging.warning(f"Este documento no parece ser una póliza de Gastos Médicos Mayores Familiar Variante F: {tipo_documento}")
-
-        # Patrones específicos para el formato Gastos Médicos Mayores Familiar Variante F
-        patrones = {
-            "Nombre del contratante": r'Contratante\s*[\r\n]+\s*Nombre:\s*([A-ZÁ-Ú\s,.]+?)(?=\s+(?:RFC|Domicilio|$))',
-            "Domicilio del contratante": r'Domicilio:\s*(.*?)(?=\s+C\.P\.|$)',
-            "Ciudad del contratante": r'(?:Ciudad|TIJUANA)(?:[\s:]+)([A-ZÁ-Ú\s,.]+?)(?=\s+(?:C\.P\.|Tel\.|$))',
-            "Estado": r'Edo\.?\s*:?\s*([A-ZÁ-Ú\s,.]+?)(?=\s+(?:TIJUANA|$))',
-            "Código Postal": r'C\.P\.\s+(\d{5})',
-            "R.F.C.": r'RFC:?\s*([A-Z0-9]{10,13})',
-            "Teléfono": r'Tel\.?:?\s*(\d{6,10})',
-            "Número de póliza": r'P[óo]liza:?\s*([A-Z0-9]+)',
-            "Solicitud": r'Solicitud\s+No\.?:?\s*(\d+)',
-            "Tipo de Plan": r'Plan de la P[óo]liza:?\s*([A-Za-zÁ-Úá-ú\s]+?)(?=\s+(?:Moneda|$))',
-            "Moneda": r'Moneda:?\s*([A-Za-zÁ-Úá-ú\s]+?)(?=\s+(?:Vigencia|$))',
-            "Fecha de inicio de vigencia": r'Vigencia:?\s*(\d{1,2}/[A-ZÁ-Ú]+/\d{4})',
-            "Fecha de fin de vigencia": r'[Vv]igencia:?\s*\d{1,2}/[A-ZÁ-Ú]+/\d{4}[-/](\d{1,2}/[A-ZÁ-Ú]+/\d{4})',
-            "Frecuencia de pago": r'Frecuencia\s+de\s+Pago\s+de\s+Primas:?\s*([A-Za-zÁ-Úá-ú\s]+?)(?=\s+(?:Gastos|$))',
-            "Prima Neta": r'Prima\s+Neta:?\s*([\d,\.]+)',
-            "Gastos de Expedición": r'Gastos\s+de\s+Expedici[óo]n:?\s*([\d,\.]+)',
-            "Prima base I.V.A.": r'Prima\s+base\s+I\.V\.A\.:?\s*([\d,\.]+)',
-            "I.V.A.": r'I\.V\.A\.:?\s*([\d,\.]+)',
-            "Prima anual total": r'Prima\s+Total:?\s*([\d,\.]+)',
-            "Suma Asegurada": r'Suma\s+Asegurada:?\s*([A-Za-zÁ-Úá-ú\s]+?)(?=\s+(?:Coaseguro|$))',
-            "Deducible": r'Deducible:?\s*\$?\s*([\d,]+\s*[A-Z]\.[A-Z]\.)',
-            "Coaseguro": r'Coaseguro:?\s*(\d+\s*%)',
-            "Coaseguro Máximo": r'Coaseguro\s+M[áa]ximo:?\s*\$?\s*([\d,]+\s*[A-Z]\.[A-Z]\.)'
+        # Detección de formato tabular estándar AXA
+        # 1. Extraer número de póliza, tipo de plan y solicitud
+        poliza_pattern = r'Póliza\s*\n?\s*([0-9A-Z]+)'
+        solicitud_pattern = r'Solicitud\s*\n?\s*(\d+)'
+        tipo_plan_pattern = r'Tipo de plan\s*\n?\s*([A-Za-z\s]+)'
+        
+        # Patrones de fechas
+        fecha_inicio_pattern = r'Fecha de inicio de vigencia\s*\n?\s*(\d{2}/\d{2}/\d{4})'
+        fecha_fin_pattern = r'Fecha de fin de vigencia\s*\n?\s*(\d{2}/\d{2}/\d{4})'
+        fecha_emision_pattern = r'Fecha de emisión\s*\n?\s*(\d{2}/\d{2}/\d{4})'
+        
+        # Patrones de pago
+        frecuencia_pago_pattern = r'Frecuencia de pago\s*\n?\s*([A-Za-z]+)'
+        tipo_pago_pattern = r'Tipo de pago\s*\n?\s*([A-Za-z]+)'
+        
+        # Patrones del contratante y asegurado
+        contratante_nombre_pattern = r'Datos del contratante\s*\n?\s*Nombre\s*:\s*([A-ZÁ-Ú\s,.]+)'
+        contratante_domicilio_pattern = r'Domicilio\s*:\s*([^C]*)'
+        contratante_ciudad_pattern = r'Ciudad\s*:\s*([A-ZÁ-Ú\s,.]+)'
+        contratante_cp_pattern = r'C\.P\.\s*(\d{5})'
+        
+        asegurado_nombre_pattern = r'Datos del Asegurado Titular\s*\n?\s*Nombre\s*:\s*([A-ZÁ-Ú\s,.]+)'
+        asegurado_domicilio_pattern = r'Domicilio\s*:\s*([^C]*?)(?=Ciudad|$)'
+        asegurado_ciudad_pattern = r'Ciudad\s*:\s*([A-ZÁ-Ú\s,.]+)'
+        
+        # Patrones RFC y teléfono
+        rfc_pattern = r'R\.F\.C\.\s*:\s*([A-Z0-9]{10,13})'
+        telefono_pattern = r'Teléfono:\s*(\d{7,11})'
+        
+        # Patrones zona y condiciones
+        zona_pattern = r'Zona Tarificación:\s*Zona\s*(\d+)'
+        periodo_siniestro_pattern = r'Período de pago de siniestro\s*(\d+\s*años)'
+        
+        # Patrones agente y promotor
+        agente_clave_pattern = r'Agente\s*:\s*(\d+)'
+        agente_nombre_pattern = r'Agente\s*:\s*\d+\s*([A-ZÁ-Ú\s,.]+)'
+        promotor_pattern = r'Promotor\s*:\s*(\d+)'
+        
+        # Patrones datos financieros
+        prima_neta_pattern = r'Prima Neta\s*\n?\s*([\d,]+\.\d{2})'
+        descuento_pattern = r'Descuento familiar\s*\n?\s*(\d+)'
+        cesion_pattern = r'Cesión de Comisión\s*\n?\s*(\d+)'
+        recargo_pattern = r'Recargo por pago fraccionado\s*\n?\s*(\d+)'
+        derecho_poliza_pattern = r'Derecho de póliza\s*\n?\s*([\d,]+\.\d{2})'
+        iva_pattern = r'I\.V\.A\.\s*\n?\s*([\d,]+\.\d{2})'
+        prima_total_pattern = r'Prima anual total\s*\n?\s*([\d,]+\.\d{2})'
+        
+        # Patrones generales para servicios adicionales
+        emergencias_pattern = r'Emergencias en el Extranjero\s*\n?\s*([^N]*)'
+        medicamentos_pattern = r'Medicamentos fuera del hospital\s*\n?\s*([^N]*)'
+        maternidad_pattern = r'Maternidad\s*\n?\s*([^D]*)'
+        coaseguro_pattern = r'Coaseguro\s*\n?\s*([0-9]+%)'
+        tope_coaseguro_pattern = r'Tope de Coaseguro\s*\n?\s*\$\s*([\d,]+\s*M\.N\.)'
+        suma_asegurada_pattern = r'SumaAsegurada\s*\n?\s*\$\s*([\d,]+\s*M\.N\.)'
+        deducible_pattern = r'Deducible\s*\n?\s*\$\s*([\d,]+\s*M\.N\.)'
+        dental_pattern = r'Protección Dental\s*\n?\s*([^N]*)'
+        medico_24_pattern = r'Tu Médico 24 Hrs\s*\n?\s*([^N]*)'
+        
+        # Patrón específico para la tabla
+        tabla_datos_financieros_pattern = r'Prima\s*\n\s*Descuento familiar\s*\n\s*(\d+)\s*\n\s*Cesión de Comisión\s*\n\s*(\d+)\s*\n\s*Prima Neta\s*\n\s*([\d,]+\.\d{2})\s*\n\s*Recargo por pago fraccionado\s*\n\s*(\d+)\s*\n\s*Derecho de póliza\s*\n\s*([\d,]+\.\d{2})\s*\n\s*I\.V\.A\.\s*\n\s*([\d,]+\.\d{2})\s*\n\s*Prima anual total\s*\n\s*([\d,]+\.\d{2})'
+        
+        # Buscar fechas
+        fecha_emision_match = re.search(r'Fecha\s+de\s+Emisi[óo]n\s*[^\d]*(\d{2}/\d{2}/\d{4})', texto_completo, re.IGNORECASE)
+        fecha_inicio_match = re.search(r'(?:Vigencia\s+desde|Fecha\s+de\s+inicio\s+de\s+vigencia)\s*[^\d]*(\d{2}/\d{2}/\d{4})', texto_completo, re.IGNORECASE)
+        fecha_fin_match = re.search(r'(?:Vigencia\s+hasta|Fecha\s+de\s+fin\s+de\s+vigencia)\s*[^\d]*(\d{2}/\d{2}/\d{4})', texto_completo, re.IGNORECASE)
+        
+        # Buscar fechas en formato DD/MMM/YYYY
+        fecha_emision_alt_match = re.search(r'Fecha\s+de\s+Emisi[óo]n\s*[^\d]*(\d{2}/[A-Za-z]{3}/\d{4})', texto_completo, re.IGNORECASE)
+        
+        # Buscar formato de vigencia con "A" como separador
+        fecha_vigencia_alt_match = re.search(r'Vigencia\s*[^\d]*(\d{2}/[A-Za-z]{3}/\d{4})\s*A\s*(\d{2}/[A-Za-z]{3}/\d{4})', texto_completo, re.IGNORECASE)
+        
+        # Extraer datos básicos
+        matches = {
+            "Número de póliza": re.search(poliza_pattern, texto_completo),
+            "Solicitud": re.search(solicitud_pattern, texto_completo),
+            "Tipo de Plan": re.search(tipo_plan_pattern, texto_completo),
+            "Fecha de inicio de vigencia": re.search(fecha_inicio_pattern, texto_completo),
+            "Fecha de fin de vigencia": re.search(fecha_fin_pattern, texto_completo),
+            "Fecha de emisión": re.search(fecha_emision_pattern, texto_completo),
+            "Frecuencia de pago": re.search(frecuencia_pago_pattern, texto_completo),
+            "Tipo de pago": re.search(tipo_pago_pattern, texto_completo),
+            "Nombre del contratante": re.search(contratante_nombre_pattern, texto_completo),
+            "Domicilio del contratante": re.search(contratante_domicilio_pattern, texto_completo),
+            "Ciudad del contratante": re.search(contratante_ciudad_pattern, texto_completo),
+            "Código Postal": re.search(contratante_cp_pattern, texto_completo),
+            "Nombre del asegurado titular": re.search(asegurado_nombre_pattern, texto_completo),
+            "Domicilio del asegurado": re.search(asegurado_domicilio_pattern, texto_completo),
+            "Ciudad del asegurado": re.search(asegurado_ciudad_pattern, texto_completo),
+            "R.F.C.": re.search(rfc_pattern, texto_completo),
+            "Teléfono": re.search(telefono_pattern, texto_completo),
+            "Zona Tarificación": re.search(zona_pattern, texto_completo),
+            "Periodo de pago de siniestro": re.search(periodo_siniestro_pattern, texto_completo),
+            "Clave Agente": re.search(agente_clave_pattern, texto_completo),
+            "Nombre del agente": re.search(agente_nombre_pattern, texto_completo),
+            "Promotor": re.search(promotor_pattern, texto_completo),
+            "Prima Neta": re.search(prima_neta_pattern, texto_completo),
+            "Descuento familiar": re.search(descuento_pattern, texto_completo),
+            "Cesión de Comisión": re.search(cesion_pattern, texto_completo),
+            "Recargo por pago fraccionado": re.search(recargo_pattern, texto_completo),
+            "Derecho de póliza": re.search(derecho_poliza_pattern, texto_completo),
+            "I.V.A.": re.search(iva_pattern, texto_completo),
+            "Prima anual total": re.search(prima_total_pattern, texto_completo),
+            "Emergencias en el Extranjero": re.search(emergencias_pattern, texto_completo),
+            "Medicamentos fuera del hospital": re.search(medicamentos_pattern, texto_completo),
+            "Maternidad": re.search(maternidad_pattern, texto_completo),
+            "Protección Dental": re.search(dental_pattern, texto_completo),
+            "Tu Médico 24 Hrs": re.search(medico_24_pattern, texto_completo),
+            "Coaseguro": re.search(coaseguro_pattern, texto_completo),
+            "Tope de Coaseguro": re.search(tope_coaseguro_pattern, texto_completo),
+            "Suma Asegurada": re.search(suma_asegurada_pattern, texto_completo),
+            "Deducible": re.search(deducible_pattern, texto_completo),
         }
         
-        # Extraer usando patrones alternativos si los anteriores fallan
-        patrones_alternativos = {
-            "Número de póliza": r'P[óo]liza:\s*([A-Z]\d+)',
-            "R.F.C.": r'RFC\s*:\s*([A-Z0-9]{10,13})',
-            "Nombre del contratante": r'Contratante\s*\n\s*Nombre:\s*([A-ZÁ-Ú\s,.]+)',
-            "I.V.A.": r'I\.V\.A\.:?\s*([\d,\.]+)',
-            "Prima base I.V.A.": r'Prima\s+base\s+I\.V\.A\.:?\s*([\d,\.]+)',
-            "Ciudad del contratante": r'TIJUANA',
-            "Estado": r'BAJA CALIFORNIA'
-        }
-        
-        # Patrones específicos para la extracción de datos de la carátula de póliza AXA
-        caratula_pattern = r'CARATULA DE POLIZA\s+Gastos Médicos Mayores Individual/Familiar\s+ORIGINAL\s+Póliza:\s*([A-Z0-9]+)\s+Solicitud No\.:\s*(\d+)\s+RFC:\s*([A-Z0-9]+)'
-        caratula_match = re.search(caratula_pattern, texto_completo, re.IGNORECASE | re.DOTALL)
-        if caratula_match:
-            resultado["Número de póliza"] = caratula_match.group(1).strip()
-            resultado["Solicitud"] = caratula_match.group(2).strip()
-            resultado["R.F.C."] = caratula_match.group(3).strip()
-            logging.info(f"Extraídos datos de carátula - Póliza: {resultado['Número de póliza']}, Solicitud: {resultado['Solicitud']}, RFC: {resultado['R.F.C.']}")
-        
-        # Intentar otra forma de extraer el número de póliza y la solicitud
-        renovacion_pattern = r'Renovación de la Póliza\s+([A-Z0-9]+)'
-        renovacion_match = re.search(renovacion_pattern, texto_completo)
-        if renovacion_match and (resultado["Número de póliza"] == "0" or resultado["Número de póliza"] == "Gastos"):
-            resultado["Número de póliza"] = renovacion_match.group(1).strip()
-            logging.info(f"Extraído número de póliza de renovación: {resultado['Número de póliza']}")
-            
-        # Buscar póliza con formato específico Z9384423
-        poliza_z_pattern = r'Z\d{7}'
-        poliza_z_match = re.search(poliza_z_pattern, texto_completo)
-        if poliza_z_match and (resultado["Número de póliza"] == "0" or resultado["Número de póliza"] == "Gastos"):
-            resultado["Número de póliza"] = poliza_z_match.group(0).strip()
-            logging.info(f"Extraído número de póliza con formato Z: {resultado['Número de póliza']}")
-            
-        # Buscar el plan de la póliza
-        plan_pattern = r'Plan de la Póliza:\s*([A-Z\s]+)'
-        plan_match = re.search(plan_pattern, texto_completo, re.IGNORECASE)
-        if plan_match:
-            resultado["Tipo de Plan"] = plan_match.group(1).strip()
-            # Limpiar valor de Plan
-            if resultado["Tipo de Plan"].endswith("Prima") or resultado["Tipo de Plan"].endswith("Neta"):
-                resultado["Tipo de Plan"] = re.sub(r'Prima\s*Neta.*$', '', resultado["Tipo de Plan"]).strip()
-            logging.info(f"Extraído tipo de plan: {resultado['Tipo de Plan']}")
-            
-        # Si no se pudo extraer el plan, intentar con otro patrón
-        if resultado["Tipo de Plan"] == "0" or not resultado["Tipo de Plan"]:
-            plan_alt_pattern = r'GASTOS\s+MEDICOS\s+PLUS'
-            plan_alt_match = re.search(plan_alt_pattern, texto_completo)
-            if plan_alt_match:
-                resultado["Tipo de Plan"] = plan_alt_match.group(0).strip()
-                logging.info(f"Extraído tipo de plan (alternativo): {resultado['Tipo de Plan']}")
-        
-        # Extraer datos financieros específicos del formato de tabla AXA
-        financieros_pattern = r'Prima Neta:\s*([\d,\.]+).*?Gastos de Expedición:\s*([\d,\.]+).*?Prima base I\.V\.A\.:\s*([\d,\.]+).*?I\.V\.A\.:\s*([\d,\.]+).*?Prima Total:\s*([\d,\.]+)'
-        financieros_match = re.search(financieros_pattern, texto_completo, re.DOTALL)
-        if financieros_match:
-            resultado["Prima Neta"] = normalizar_numero(financieros_match.group(1).strip())
-            resultado["Gastos de Expedición"] = normalizar_numero(financieros_match.group(2).strip())
-            resultado["Prima base I.V.A."] = normalizar_numero(financieros_match.group(3).strip())
-            resultado["I.V.A."] = normalizar_numero(financieros_match.group(4).strip())
-            resultado["Prima anual total"] = normalizar_numero(financieros_match.group(5).strip())
-            logging.info(f"Extraídos datos financieros de tabla - Prima Neta: {resultado['Prima Neta']}, Gastos de Expedición: {resultado['Gastos de Expedición']}, Prima base I.V.A.: {resultado['Prima base I.V.A.']}, I.V.A.: {resultado['I.V.A.']}, Prima Total: {resultado['Prima anual total']}")
-        
-        # Intentar extraer I.V.A. de la imagen, usando un patrón muy específico de este formato
-        # Esto fuerza el valor conocido para este formato específico
-        iva_especifico_pattern = r'23,194\.47'
-        iva_especifico_match = re.search(iva_especifico_pattern, texto_completo)
-        if iva_especifico_match:
-            resultado["I.V.A."] = normalizar_numero(iva_especifico_match.group(0))
-            logging.info(f"Extraído I.V.A. de valor específico: {resultado['I.V.A.']}")
-        else:
-            # En este formato específico, si no se encuentra el patrón, forzar el valor conocido
-            resultado["I.V.A."] = "23194.47"
-            logging.info(f"Forzando I.V.A. al valor conocido: 23194.47")
-        
-        # Post-procesamiento específico para este formato
-
-        # Asegurar que el número de póliza sea correcto
-        # Número de póliza: Si hay un valor en formato Z... usar ese
-        poliza_pattern = r'Z\d{7}'
-        poliza_matches = re.findall(poliza_pattern, texto_completo)
-        if poliza_matches:
-            for poliza in poliza_matches:
-                if "Z9384" in poliza:  # Formato específico para este tipo
-                    resultado["Número de póliza"] = poliza
-                    logging.info(f"Forzado número de póliza a: {resultado['Número de póliza']}")
-                    break
-            
-        # Si no encontramos el número de póliza con el formato esperado, usar el valor de renovación
-        if resultado["Número de póliza"] not in ["0", "Gastos"] and "Z9384" not in resultado["Número de póliza"]:
-            # Buscar específicamente Z9384422 o Z9384423
-            for patron in ["Z9384422", "Z9384423"]:
-                if patron in texto_completo:
-                    resultado["Número de póliza"] = patron
-                    logging.info(f"Forzado número de póliza a valor específico: {resultado['Número de póliza']}")
-                    break
-                
-        # Asegurar que la ciudad sea TIJUANA
-        if not resultado["Ciudad del contratante"] or resultado["Ciudad del contratante"] == "":
-            resultado["Ciudad del contratante"] = "TIJUANA"
-            logging.info(f"Forzada ciudad del contratante a: TIJUANA")
-            
-        # Asegurar que el I.V.A. sea el correcto (23194.47)
-        if resultado["I.V.A."] == resultado["Prima base I.V.A."]:
-            resultado["I.V.A."] = "23194.47"
-            logging.info(f"Forzado I.V.A. a valor específico: 23194.47")
-
-        # Extraer datos específicos de cobertura
-        coberturas_pattern = r'Suma Asegurada:\s*(Sin Límite|[\d,\.]+).*?Deducible:\s*\$\s*([\d,]+\s*[A-Z]\.[A-Z]\.).*?Coaseguro:\s*(\d+\s*%).*?Coaseguro Máximo:\s*\$\s*([\d,]+\s*[A-Z]\.[A-Z]\.)'
-        coberturas_match = re.search(coberturas_pattern, texto_completo, re.DOTALL)
-        if coberturas_match:
-            resultado["Suma Asegurada"] = coberturas_match.group(1).strip()
-            resultado["Deducible"] = coberturas_match.group(2).strip()
-            resultado["Coaseguro"] = coberturas_match.group(3).strip()
-            resultado["Coaseguro Máximo"] = coberturas_match.group(4).strip()
-            logging.info(f"Extraídos datos de cobertura - Suma Asegurada: {resultado['Suma Asegurada']}, Deducible: {resultado['Deducible']}, Coaseguro: {resultado['Coaseguro']}, Coaseguro Máximo: {resultado['Coaseguro Máximo']}")
-
-        # Extraer valores usando patrones específicos
-        for campo, patron in patrones.items():
-            match = re.search(patron, texto_completo, re.MULTILINE | re.IGNORECASE)
+        # Llenar los datos
+        for campo, match in matches.items():
             if match:
-                if campo in ["Domicilio del contratante", "Domicilio del asegurado"]:
-                    valor = match.group(1).strip() if match.group(1) else match.group(0).strip()
-                    # Limpiar saltos de línea y espacios múltiples
-                    valor = re.sub(r'\s*\n\s*', ' ', valor)
-                    resultado[campo] = valor
-                    logging.info(f"{campo} extraído: {valor}")
-                elif campo in ["Prima Neta", "Prima anual total", "I.V.A.", "Recargo por pago fraccionado", "Gastos de Expedición", "Prima base I.V.A.", "Descuento familiar", "Cesión de Comisión"]:
-                    # Para valores numéricos, aplicamos la normalización
-                    if match.groups():
-                        valor = next((g for g in match.groups() if g), "").strip()
+                try:
+                    if campo in ["Prima Neta", "Prima anual total", "I.V.A.", "Derecho de póliza"]:
+                        valor = match.group(1).strip()
+                        resultado[campo] = normalizar_numero(valor)
+                    elif campo in ["Descuento familiar", "Cesión de Comisión", "Recargo por pago fraccionado"]:
+                        valor = match.group(1).strip()
                         resultado[campo] = normalizar_numero(valor)
                     else:
-                        try:
-                            valor = match.group(1).strip()
-                            resultado[campo] = normalizar_numero(valor)
-                        except IndexError:
-                            # Si no hay group(1), intenta con group(0) que es el match completo
-                            valor = match.group(0).strip()
-                            resultado[campo] = normalizar_numero(valor)
-                    logging.info(f"Encontrado {campo}: {resultado[campo]}")
-                else:
-                    if match.groups() and len(match.groups()) > 0:
-                        for grupo in match.groups():
-                            if grupo:
-                                resultado[campo] = grupo.strip()
-                                break
-                    else:
-                        # Corregir el error verificando si existe group(1) antes de acceder
-                        try:
-                            resultado[campo] = match.group(1).strip()
-                        except IndexError:
-                            # Si no hay group(1), intenta con group(0) que es el match completo
-                            resultado[campo] = match.group(0).strip()
-                            logging.warning(f"No se encontró grupo de captura para {campo}, usando match completo")
-                    
-                    if resultado[campo] != '0':
-                        logging.info(f"Encontrado {campo}: {resultado[campo]}")
+                        resultado[campo] = match.group(1).strip()
+                    logging.info(f"Extraído {campo}: {resultado[campo]}")
+                except (IndexError, AttributeError) as e:
+                    logging.warning(f"Error extrayendo {campo}: {e}")
         
-        # Buscar fechas de vigencia en formato alternativo
-        if resultado["Fecha de inicio de vigencia"] == "0" or resultado["Fecha de fin de vigencia"] == "0":
-            vigencia_match = re.search(r'Vigencia:?\s*(\d{1,2}/\d{1,2}/\d{4})\s*[a-zA-Z]*\s*(\d{1,2}/\d{1,2}/\d{4})', texto_completo)
-            if vigencia_match:
-                resultado["Fecha de inicio de vigencia"] = vigencia_match.group(1).strip()
-                resultado["Fecha de fin de vigencia"] = vigencia_match.group(2).strip()
-                logging.info(f"Fecha de inicio de vigencia (formato alternativo): {resultado['Fecha de inicio de vigencia']}")
-                logging.info(f"Fecha de fin de vigencia (formato alternativo): {resultado['Fecha de fin de vigencia']}")
-
-        # Búsqueda especial para coberturas amparadas
-        cobertura_pattern = r'Coberturas\s+Amparadas\s+(.*?)(?=MEXICO|ADVERTENCIA|$)'
+        # Procesar tabla de datos financieros completa si existe
+        match_tabla = re.search(tabla_datos_financieros_pattern, texto_completo)
+        if match_tabla:
+            resultado["Descuento familiar"] = normalizar_numero(match_tabla.group(1))
+            resultado["Cesión de Comisión"] = normalizar_numero(match_tabla.group(2))
+            resultado["Prima Neta"] = normalizar_numero(match_tabla.group(3))
+            resultado["Recargo por pago fraccionado"] = normalizar_numero(match_tabla.group(4))
+            resultado["Derecho de póliza"] = normalizar_numero(match_tabla.group(5))
+            resultado["I.V.A."] = normalizar_numero(match_tabla.group(6))
+            resultado["Prima anual total"] = normalizar_numero(match_tabla.group(7))
+            logging.info(f"Datos financieros extraídos del patrón completo de tabla")
+        
+        # Búsqueda alternativa para extraer datos específicos del formato AXA salud familiar
+        for linea in texto_completo.split('\n'):
+            if "Póliza" in linea and resultado["Número de póliza"] == "0":
+                match = re.search(r'(\d{5,}[A-Z0-9]+)', linea)
+                if match:
+                    resultado["Número de póliza"] = match.group(1)
+                    logging.info(f"Número de póliza extraído (alt): {resultado['Número de póliza']}")
+            
+            # Buscar agente si no lo encontramos aún
+            if "Agente" in linea and ":" in linea and resultado["Clave Agente"] == "0":
+                match = re.search(r'Agente\s*:?\s*(\d+)', linea)
+                if match:
+                    resultado["Clave Agente"] = match.group(1)
+                    logging.info(f"Clave Agente extraída (alt): {resultado['Clave Agente']}")
+            
+            # Buscar datos financieros alternativos
+            for nombre_campo in ["Descuento familiar", "Cesión de Comisión", "Prima Neta", 
+                                "Recargo por pago fraccionado", "Derecho de póliza", "I.V.A.", "Prima anual total"]:
+                if nombre_campo in linea and resultado[nombre_campo] == "0":
+                    match = re.search(rf'{re.escape(nombre_campo)}\s+(\d+[,\d]*\.\d{2}|\d+)', linea)
+                    if match:
+                        resultado[nombre_campo] = normalizar_numero(match.group(1))
+                        logging.info(f"{nombre_campo} extraído (alt): {resultado[nombre_campo]}")
+        
+        # Extraer coberturas incluidas
+        cobertura_pattern = r'Incluidos en Básica\s+(.*?)(?=Coberturas adicionales con costo|$)'
         cobertura_match = re.search(cobertura_pattern, texto_completo, re.DOTALL | re.IGNORECASE)
         if cobertura_match:
-            text_coberturas = cobertura_match.group(1).strip()
-            # Dividir por líneas y buscar cada cobertura
-            for linea in text_coberturas.split('\n'):
-                if linea.strip():
-                    # Buscar la estructura "NOMBRE   LÍMITES"
-                    m = re.match(r'([A-ZÁ-Ú\s]+)(?:\s{2,}|\t+)(.+)', linea.strip())
-                    if m:
-                        nombre = m.group(1).strip()
-                        limites = m.group(2).strip()
-                        coberturas_amparadas.append({
-                            "Nombre": nombre,
-                            "Límites": limites
-                        })
-                    else:
-                        # Si no tiene un formato claro, guardarlo como nombre solamente
-                        coberturas_amparadas.append({
-                            "Nombre": linea.strip(),
-                            "Límites": "Sin especificar"
-                        })
-
-        # Asignar coberturas amparadas al resultado
-        resultado["Coberturas Amparadas"] = coberturas_amparadas
-
-        # Post-procesamiento específico para este formato
-
-        # Tratar de extraer el código postal del domicilio si no lo encontramos directamente
-        if resultado["Código Postal"] == "0" and resultado["Domicilio del contratante"] != "0":
-            cp_match = re.search(r'C\.P\.\s*(\d{5})', resultado["Domicilio del contratante"], re.IGNORECASE)
-            if cp_match:
-                resultado["Código Postal"] = cp_match.group(1)
-                logging.info(f"Código postal extraído del domicilio: {resultado['Código Postal']}")
-            else:
-                # Intenta buscar solo 5 dígitos seguidos
-                cp_match = re.search(r'(\d{5})', resultado["Domicilio del contratante"])
-                if cp_match:
-                    resultado["Código Postal"] = cp_match.group(1).strip()
-                    logging.info(f"Código postal extraído del domicilio (regex alternativo): {resultado['Código Postal']}")
-
-        # Corregir valor de Coaseguro eliminando espacios y asegurando formato
-        if resultado["Coaseguro"] != "0":
-            resultado["Coaseguro"] = resultado["Coaseguro"].replace(" ", "")
-            if not resultado["Coaseguro"].endswith("%"):
-                resultado["Coaseguro"] += "%"
-
-        # Extraer fecha de emisión si no la encontramos directamente
-        if resultado["Fecha de emisión"] == "0":
-            fecha_match = re.search(r'MEXICO D\.F\.,\s+A\s+(\d{1,2}\s+DE\s+[A-ZÁ-Ú]+\s+DE\s+\d{4})', texto_completo, re.IGNORECASE)
-            if fecha_match:
-                resultado["Fecha de emisión"] = fecha_match.group(1).strip()
+            coberturas_incluidas.append({
+                "Nombre": "Cobertura Básica",
+                "Suma Asegurada": resultado.get("Suma Asegurada", "N/A"),
+                "Deducible": resultado.get("Deducible", "N/A"),
+                "Coaseguro": resultado.get("Coaseguro", "N/A")
+            })
+        
+        # Añadir las coberturas y servicios al resultado
+        resultado["Coberturas Incluidas"] = coberturas_incluidas
+        resultado["Coberturas Adicionales"] = coberturas_adicionales
+        resultado["Servicios con Costo"] = servicios_costo
+        
+        # URL específica para variante F
+        resultado["Url"] = "https://rinoapps.com/condiciones/salud_familiar_variantef.pdf"
+        
+        # Si hay campos específicos que aún no hemos encontrado, buscamos en la imagen
+        # Si no tenemos nombre del contratante pero sí hay datos en la imagen
+        if resultado["Nombre del contratante"] == "0":
+            nombre_contratante_alt = re.search(r'Nombre\s*\n\s*([A-ZÁ-Ú\s,.]+)', texto_completo)
+            if nombre_contratante_alt:
+                resultado["Nombre del contratante"] = nombre_contratante_alt.group(1).strip()
+                logging.info(f"Nombre del contratante extraído (alt2): {resultado['Nombre del contratante']}")
+        
+        # Si no tenemos datos del asegurado, usar los del contratante
+        if resultado["Nombre del asegurado titular"] == "0" and resultado["Nombre del contratante"] != "0":
+            resultado["Nombre del asegurado titular"] = resultado["Nombre del contratante"]
+            logging.info(f"Nombre del asegurado titular asumido como el contratante: {resultado['Nombre del asegurado titular']}")
+        
+        # Extraer datos básicos
+        if "Fecha de emisión" not in resultado or resultado["Fecha de emisión"] == "0":
+            # Asignar fechas extraídas
+            if fecha_emision_match:
+                resultado['Fecha de emisión'] = fecha_emision_match.group(1)
                 logging.info(f"Fecha de emisión extraída: {resultado['Fecha de emisión']}")
-
-        # Para la variante F, si no encontramos Descuento familiar o Cesión de Comisión, asumimos 0
-        if resultado["Descuento familiar"] == "0":
-            resultado["Descuento familiar"] = "0.00"
-        if resultado["Cesión de Comisión"] == "0":
-            resultado["Cesión de Comisión"] = "0.00"
-            
-        # Si no hay recargo por pago fraccionado, establecerlo a 0
-        if resultado["Recargo por pago fraccionado"] == "0":
-            resultado["Recargo por pago fraccionado"] = "0.00"
-
-        # Para vigencia en formato texto (14/MARZO/2025), convertir al formato esperado (14/03/2025)
-        # Este formato específico puede requerir un procesamiento adicional
-        for campo in ["Fecha de inicio de vigencia", "Fecha de fin de vigencia"]:
-            if resultado[campo] != "0":
-                meses = {
-                    "ENERO": "01", "FEBRERO": "02", "MARZO": "03", "ABRIL": "04", 
-                    "MAYO": "05", "JUNIO": "06", "JULIO": "07", "AGOSTO": "08", 
-                    "SEPTIEMBRE": "09", "OCTUBRE": "10", "NOVIEMBRE": "11", "DICIEMBRE": "12"
-                }
-                try:
-                    partes = resultado[campo].split('/')
-                    if len(partes) == 3:
-                        dia = partes[0].zfill(2)  # Asegurar que tenga 2 dígitos
-                        mes_texto = partes[1].upper()
-                        año = partes[2]
-                        
-                        # Convertir mes de texto a número
-                        if mes_texto in meses:
-                            mes = meses[mes_texto]
-                            resultado[campo] = f"{dia}/{mes}/{año}"
-                            logging.info(f"{campo} convertido a formato numérico: {resultado[campo]}")
-                except Exception as e:
-                    logging.warning(f"Error al normalizar la fecha {campo}: {str(e)}")
-
-        # Si no encontramos Tope de Coaseguro pero sí Coaseguro Máximo, usar ese valor
-        if resultado["Tope de Coaseguro"] == "0" and resultado["Coaseguro Máximo"] != "0":
-            resultado["Tope de Coaseguro"] = resultado["Coaseguro Máximo"]
-            logging.info(f"Usando Coaseguro Máximo como Tope de Coaseguro: {resultado['Tope de Coaseguro']}")
-
-        logging.info(f"Procesamiento completado para {pdf_path}")
-        return resultado
+            elif fecha_emision_alt_match:
+                resultado['Fecha de emisión'] = fecha_emision_alt_match.group(1)
+                logging.info(f"Fecha de emisión extraída (formato alt): {resultado['Fecha de emisión']}")
+        
+        if "Fecha de inicio de vigencia" not in resultado or resultado["Fecha de inicio de vigencia"] == "0":
+            if fecha_inicio_match:
+                resultado['Fecha de inicio de vigencia'] = fecha_inicio_match.group(1)
+                logging.info(f"Fecha de inicio de vigencia extraída: {resultado['Fecha de inicio de vigencia']}")
+            elif fecha_vigencia_alt_match:
+                resultado['Fecha de inicio de vigencia'] = fecha_vigencia_alt_match.group(1)
+                logging.info(f"Fecha de inicio de vigencia extraída (formato alt): {resultado['Fecha de inicio de vigencia']}")
+                
+        if "Fecha de fin de vigencia" not in resultado or resultado["Fecha de fin de vigencia"] == "0":
+            if fecha_fin_match:
+                resultado['Fecha de fin de vigencia'] = fecha_fin_match.group(1)
+                logging.info(f"Fecha de fin de vigencia extraída: {resultado['Fecha de fin de vigencia']}")
+            elif fecha_vigencia_alt_match:
+                resultado['Fecha de fin de vigencia'] = fecha_vigencia_alt_match.group(2)
+                logging.info(f"Fecha de fin de vigencia extraída (formato alt): {resultado['Fecha de fin de vigencia']}")
     
     except Exception as e:
-        logging.error(f"Error al extraer datos de {pdf_path}: {str(e)}", exc_info=True)
-        return resultado
+        logging.error(f"Error procesando PDF de Gastos Médicos Mayores Familiar Variante F: {str(e)}", exc_info=True)
+
+    return resultado
 
 def generar_markdown(datos: Dict, ruta_salida: str = "salud_familiar_variantef.md") -> None:
     """
