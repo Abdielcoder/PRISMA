@@ -98,7 +98,15 @@ def extraer_datos_poliza_vida_protgt(pdf_path: str) -> Dict:
             # Usar múltiples métodos de extracción para mayor robustez
             texto_con_sort = page.get_text("text", sort=True) + "\n"
             texto_sin_sort = page.get_text("text", sort=False) + "\n"
-            texto_blocks = page.get_text("blocks") + "\n"
+            
+            # Procesar correctamente los bloques (son una lista, no un string)
+            blocks = page.get_text("blocks")
+            texto_blocks = ""
+            for b in blocks:
+                # Cada bloque es una tupla con información; el texto está en el índice 4
+                if len(b) > 4:
+                    texto_blocks += b[4] + " "
+            texto_blocks += "\n"
             
             # Combinar los resultados
             texto_completo += texto_con_sort
