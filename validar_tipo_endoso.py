@@ -15,6 +15,7 @@ from data_ia_general_proteccion_efectiva import procesar_archivo as procesar_arc
 from data_ia_general_protgt_pyme import procesar_archivo as procesar_archivo_protgt_pyme
 from data_ia_general_salud_familiar import extraer_datos_poliza_salud_familiar
 from data_ia_general_salud_colectivo import extraer_datos_poliza_salud_colectivo
+from data_ia_general_kids import extraer_datos_poliza_aliados_kids
 try:
     from data_ia_general_salud_familiar_variantef import extraer_datos_poliza_salud_familiar_variantef
 except ImportError:
@@ -79,6 +80,17 @@ def detect_document_type(text: str) -> str:
         r"aliados\s*mas",
         r"ahorro.*programado",
         r"seguro.*aliados"
+    ]
+    
+    # Patrones para identificar ALIADOS+ KIDS (nuevo)
+    patrones_aliados_kids = [
+        r"aliados\+\s*kids",
+        r"aliados\s+kids",
+        r"carátula de póliza.*aliados.*kids",
+        r"aliados.*kids.*carátula",
+        r"póliza.*aliados.*kids",
+        r"datos del asegurado menor",
+        r"aliados\+ kids"
     ]
     
     # Patrones para identificar VIDA PROTGT
@@ -207,8 +219,18 @@ def detect_document_type(text: str) -> str:
     # 1. Buscar patrones de Aliados+ PPR primero
     for patron in patrones_aliados_ppr:
         if re.search(patron, text):
+            # Verificar si también contiene "kids" para diferenciar entre PPR y KIDS
+            if any(re.search(k_patron, text) for k_patron in patrones_aliados_kids):
+                logger.info(f"Detectada póliza Aliados+ KIDS con patrón: {patron}")
+                return "ALIADOS_KIDS"
             logger.info(f"Detectada póliza Aliados+ PPR con patrón: {patron}")
             return "ALIADOS_PPR"
+    
+    # 1.1 Buscar patrones de Aliados+ KIDS específicamente
+    for patron in patrones_aliados_kids:
+        if re.search(patron, text):
+            logger.info(f"Detectada póliza Aliados+ KIDS con patrón: {patron}")
+            return "ALIADOS_KIDS"
             
     # 2. Buscar patrones de VIDA PROTGT
     for patron in patrones_vida_protgt:
@@ -722,6 +744,37 @@ def validate_endoso(pdf_path: str) -> Dict:
             else:
                 logger.error(f"Se detectó póliza de Gastos Médicos Colectivo para {pdf_path}, pero no se pudieron extraer los datos.")
                 return {"error": "Se detectó póliza de Gastos Médicos Colectivo, pero no se pudieron extraer los datos"}
+        
+        elif tipo_documento == "ALIADOS_KIDS":
+            logger.info(f"Póliza Aliados+ KIDS detectada para {pdf_path}. Procediendo a extraer datos.")
+            
+            # Procesar el archivo y obtener datos con el script para pólizas de Aliados+ KIDS
+            datos_kids = extraer_datos_poliza_aliados_kids(pdf_path)
+            
+            if datos_kids:
+                logger.info(f"Datos de póliza Aliados+ KIDS extraídos exitosamente para {pdf_path}.")
+                # Convertir los datos a formato financiero esperado por el frontend
+                datos_financieros = {
+                    "prima_neta": datos_kids.get("Prima Neta", "0"),
+                    "gastos_expedicion": "0",  # Normalmente no tienen gastos de expedición
+                    "iva": datos_kids.get("I.V.A.", "0"),
+                    "precio_total": datos_kids.get("Prima anual total", "0"),
+                    "tasa_financiamiento": "0",
+                    "prima_mensual": "0",
+                    "prima_trimestral": datos_kids.get("Prima trimestral", "0"),
+                    "prima_trimestral_total": datos_kids.get("Prima trimestral Total", "0"),
+                    "recargo_pago_fraccionado": datos_kids.get("Recargo por pago fraccionado", "0")
+                }
+                
+                return {
+                    "tipo_documento": "ALIADOS_KIDS",
+                    "descripcion": "PÓLIZA ALIADOS+ KIDS",
+                    "datos_financieros": datos_financieros,
+                    "datos_completos": datos_kids
+                }
+            else:
+                logger.error(f"Se detectó póliza Aliados+ KIDS para {pdf_path}, pero no se pudieron extraer los datos.")
+                return {"error": "Se detectó póliza Aliados+ KIDS, pero no se pudieron extraer los datos"}
         
         else:
             logger.warning(f"Tipo de documento no soportado o desconocido para {pdf_path}")

@@ -224,6 +224,9 @@ def upload_file():
         elif resultado.get("tipo_documento") == "POLIZA_ALIADOS_PPR":
             respuesta_financiera_base["ramo"] = "VIDA"
             respuesta_financiera_base["tipo_endoso"] = resultado.get("descripcion") or "PÓLIZA ALIADOS+ PPR"
+        elif resultado.get("tipo_documento") == "ALIADOS_KIDS":
+            respuesta_financiera_base["ramo"] = "VIDA"
+            respuesta_financiera_base["tipo_endoso"] = resultado.get("descripcion") or "PÓLIZA ALIADOS+ KIDS"
         elif resultado.get("tipo_documento") == "POLIZA_PROTGT_TEMPORAL_MN":
             respuesta_financiera_base["ramo"] = "VIDA"
             respuesta_financiera_base["tipo_endoso"] = resultado.get("descripcion") or "PÓLIZA PROTGT TEMPORAL MN"
@@ -336,7 +339,8 @@ def validate_file():
             response['tipo_endoso'] = result.get('tipo_endoso', '')
         elif result.get('tipo_documento') in ['POLIZA_VIDA', 'POLIZA_ALIADOS_PPR', 'POLIZA_PROTGT_TEMPORAL_MN', 
                                            'POLIZA_VIDA_PROTGT', 'PROTECCION_EFECTIVA', 'PROTGT_PYME', 
-                                           'SALUD_FAMILIAR', 'SALUD_FAMILIAR_VARIANTEF', 'SALUD_COLECTIVO']:
+                                           'SALUD_FAMILIAR', 'SALUD_FAMILIAR_VARIANTEF', 'SALUD_COLECTIVO',
+                                           'ALIADOS_KIDS']:
             response['datos_completos'] = result.get('datos_completos', {})
             
             # Generar URL markdown

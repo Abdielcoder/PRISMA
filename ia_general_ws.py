@@ -41,6 +41,7 @@ try:
     data_ia_general_protgt_mn = importar_modulo("data_ia_general_protgt_mn.py")
     data_ia_general_proteccion_efectiva = importar_modulo("data_ia_general_proteccion_efectiva.py")
     data_ia_general_protgt_pyme = importar_modulo("data_ia_general_protgt_pyme.py")
+    data_ia_general_kids = importar_modulo("data_ia_general_kids.py")
     
     if validador_tipo_endoso:
         logging.info("Módulo validar_tipo_endoso.py cargado correctamente")
@@ -92,6 +93,9 @@ class PolizaProcessor:
         
         if 'data_ia_general_protgt_pyme' in globals():
             self.extractores["PROTGT_PYME"] = data_ia_general_protgt_pyme.extraer_datos_poliza_protgt_pyme
+        
+        if 'data_ia_general_kids' in globals():
+            self.extractores["ALIADOS_KIDS"] = data_ia_general_kids.extraer_datos_poliza_aliados_kids
         
         logging.info(f"Extractores cargados: {list(self.extractores.keys())}")
 
@@ -474,7 +478,8 @@ class PolizaProcessor:
                             "POLIZA_PROTGT_TEMPORAL_MN": "PÓLIZA PROTGT TEMPORAL MN",
                             "PROTECCION_EFECTIVA": "PÓLIZA PROTECCIÓN EFECTIVA",
                             "PROTGT_PYME": "PLAN PROTEGE PYME",
-                            "SALUD_COLECTIVO": "PÓLIZA DE GASTOS MÉDICOS COLECTIVO"
+                            "SALUD_COLECTIVO": "PÓLIZA DE GASTOS MÉDICOS COLECTIVO",
+                            "ALIADOS_KIDS": "PÓLIZA ALIADOS+ KIDS"
                         }
                         descripcion = descripcion_dict.get(tipo_documento, "DOCUMENTO DESCONOCIDO")
                         
@@ -551,6 +556,10 @@ class PolizaProcessor:
                 ramo = "VIDA"
                 respuesta_financiera_base["ramo"] = ramo 
                 respuesta_financiera_base["tipo_endoso"] = descripcion or "PÓLIZA ALIADOS+ PPR"
+            elif tipo_documento == "ALIADOS_KIDS":
+                ramo = "VIDA"
+                respuesta_financiera_base["ramo"] = ramo 
+                respuesta_financiera_base["tipo_endoso"] = descripcion or "PÓLIZA ALIADOS+ KIDS"
             elif tipo_documento == "POLIZA_PROTGT_TEMPORAL_MN":
                 ramo = "VIDA"
                 respuesta_financiera_base["ramo"] = ramo
