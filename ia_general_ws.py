@@ -357,7 +357,9 @@ class PolizaProcessor:
             pdf_path.write_bytes(response.content)
             
             # **1. Definir la estructura base completa con valores por defecto**
+            # Incluir TODOS los campos posibles de todos los extractores
             respuesta_poliza_base = {
+                # Campos generales
                 "Clave Agente": "No disponible", 
                 "Coaseguro": "No disponible", 
                 "Cobertura Básica": "No disponible",
@@ -389,6 +391,8 @@ class PolizaProcessor:
                 "Url": "No disponible", 
                 "Suma asegurada": "0.00", 
                 "Moneda": "No disponible",
+                
+                # Campos específicos para pólizas de salud
                 "Descuento familiar": "0.00", 
                 "Cesión de Comisión": "0.00", 
                 "Recargo por pago fraccionado": "0.00",
@@ -398,83 +402,111 @@ class PolizaProcessor:
                 "Tope de Coaseguro": "No disponible",
                 "Tipo de Red": "No disponible",
                 "Tabulador Médico": "No disponible",
-                "Tipo de plan": "No disponible",
-                "Solicitud": "No disponible",
-                "Promotor": "No disponible",
                 "Emergencias en el Extranjero": "No disponible",
                 "Medicamentos fuera del hospital": "No disponible",
                 "Maternidad": "No disponible",
                 "Protección Dental": "No disponible",
                 "Tu Médico 24 Hrs": "No disponible",
+                "Complicaciones de GMM no cubiertos": "No disponible",
                 "Tipo de plan solicitado": "No disponible",
-                "Tipo de pago": "No disponible"
+                
+                # Campos específicos para pólizas de vida
+                "Tipo de Plan": "No disponible",
+                "Solicitud": "No disponible",
+                "Subramo": "No disponible",
+                "Tipo de pago": "No disponible",
+                "Suma asegurada por fallecimiento": "0.00",
+                "Fondo de reserva": "0.00",
+                "Contratante": "No disponible",
+                "Promotor": "No disponible",
+                "Beneficiarios": [],
+                
+                # Campos para planes PYME
+                "Características del grupo asegurado": "No disponible",
+                "Regla para determinar la suma asegurada": "No disponible",
+                "Nombre de la empresa": "No disponible",
+                "Giro de la empresa": "No disponible",
+                
+                # Coberturas y adicionales para todos los tipos de pólizas
+                "Coberturas Incluidas": [],
+                "Coberturas Adicionales": [],
+                "Servicios con Costo": []
             }
 
-            respuesta_financiera_base = {
-                "Prima neta": "0.00",
-                "Gastos por expedición": "0.00",
-                "I.V.A.": "0.00",
-                "Precio total": "0.00",
-                "Tasa de financiamiento": "0.00",
-                "Prima mensual": "0.00",
-                "Descuento familiar": "0.00",
-                "Cesión de Comisión": "0.00",
-                "Recargo por pago fraccionado": "0.00"
-            }
+            # **2. Detectar el tipo de documento y procesar**
+            tipo_documento, resultado_validacion = self.detectar_tipo_documento(pdf_path)
             
-            # Detectar tipo de documento
-            tipo_documento, resultado_validacion = self.detectar_tipo_documento(str(pdf_path))
-            logging.info(f"Tipo de documento detectado: {tipo_documento}")
+            if tipo_documento == "DESCONOCIDO":
+                return {
+                    "error": "No se pudo determinar el tipo de documento"
+                }
             
-            # **2. Rellenar datos desde el resultado del procesamiento**
+            # **3. Procesar con el extractor adecuado**
             datos_completos_extraidos = None
-            datos_financieros_extraidos = None
-            descripcion = "DOCUMENTO DESCONOCIDO"
+            datos_financieros = None
+            descripcion = ""
             
-            if resultado_validacion is not None:
-                logging.info("Usando resultados del validador")
-                descripcion = resultado_validacion.get("descripcion", "")
-                datos_financieros_extraidos = resultado_validacion.get("datos_financieros", {})
+            if resultado_validacion and "datos_completos" in resultado_validacion:
+                # Usar datos del validador si están disponibles
                 datos_completos_extraidos = resultado_validacion.get("datos_completos", {})
+                datos_financieros = resultado_validacion.get("datos_financieros", {})
+                descripcion = resultado_validacion.get("descripcion", "")
+                logging.info(f"Usando datos completos del validador para {tipo_documento}")
             else:
-                # Si el validador no tiene datos completos, intentar usar el extractor específico
-                logging.info("Usando extractor específico para el tipo de documento")
-                
-                # Usar el extractor específico según el tipo de documento
+                # Usar extractor específico
                 if tipo_documento in self.extractores:
-                    logging.info(f"Usando extractor para {tipo_documento}")
-                    extractor = self.extractores[tipo_documento]
-                    datos_completos_extraidos = extractor(str(pdf_path))
-                    
-                    # Formatear datos financieros
-                    datos_financieros_extraidos = self.formatear_datos_financieros(datos_completos_extraidos, tipo_documento)
-                    
-                    # Descripción según tipo de documento
-                    descripcion_dict = {
-                        "ENDOSO_A": "ENDOSO TIPO A - MODIFICACIÓN DE DATOS",
-                        "POLIZA_VIDA": "PÓLIZA DE VIDA",
-                        "SALUD_FAMILIAR": "PÓLIZA DE GASTOS MÉDICOS MAYORES FAMILIAR",
-                        "SALUD_FAMILIAR_VARIANTEF": "PÓLIZA DE GASTOS MÉDICOS MAYORES FAMILIAR (VARIANTE F)",
-                        "POLIZA_VIDA_INDIVIDUAL": "PÓLIZA DE VIDA INDIVIDUAL",
-                        "POLIZA_ALIADOS_PPR": "PÓLIZA ALIADOS+ PPR",
-                        "POLIZA_VIDA_PROTGT": "PÓLIZA VIDA PROTGT",
-                        "POLIZA_PROTGT_TEMPORAL_MN": "PÓLIZA PROTGT TEMPORAL MN",
-                        "PROTECCION_EFECTIVA": "PÓLIZA PROTECCIÓN EFECTIVA",
-                        "PROTGT_PYME": "PLAN PROTEGE PYME",
-                        "SALUD_COLECTIVO": "PÓLIZA DE GASTOS MÉDICOS COLECTIVO"
+                    try:
+                        extractor = self.extractores[tipo_documento]
+                        datos_completos_extraidos = extractor(pdf_path)
+                        
+                        # Formatear datos financieros
+                        datos_financieros = self.formatear_datos_financieros(datos_completos_extraidos, tipo_documento)
+                        
+                        # Establecer descripción basada en el tipo de documento
+                        descripcion_dict = {
+                            "ENDOSO_A": "MODIFICACIÓN DE DATOS",
+                            "POLIZA_VIDA": "PÓLIZA DE VIDA",
+                            "POLIZA_VIDA_INDIVIDUAL": "PÓLIZA DE VIDA INDIVIDUAL",
+                            "SALUD_FAMILIAR": "PÓLIZA DE GASTOS MÉDICOS FAMILIAR",
+                            "SALUD_FAMILIAR_VARIANTEF": "PÓLIZA DE GASTOS MÉDICOS FAMILIAR (VARIANTE F)",
+                            "POLIZA_ALIADOS_PPR": "PÓLIZA ALIADOS+ PPR",
+                            "POLIZA_VIDA_PROTGT": "PÓLIZA VIDA PROTGT",
+                            "POLIZA_PROTGT_TEMPORAL_MN": "PÓLIZA PROTGT TEMPORAL MN",
+                            "PROTECCION_EFECTIVA": "PÓLIZA PROTECCIÓN EFECTIVA",
+                            "PROTGT_PYME": "PLAN PROTEGE PYME",
+                            "SALUD_COLECTIVO": "PÓLIZA DE GASTOS MÉDICOS COLECTIVO"
+                        }
+                        descripcion = descripcion_dict.get(tipo_documento, "DOCUMENTO DESCONOCIDO")
+                        
+                        logging.info(f"Datos extraídos mediante extractor específico para {tipo_documento}")
+                    except Exception as e:
+                        logging.error(f"Error al extraer datos con el extractor para {tipo_documento}: {str(e)}")
+                        return {
+                            "error": f"Error al procesar el documento: {str(e)}"
+                        }
+                else:
+                    logging.error(f"No hay extractor disponible para {tipo_documento}")
+                    return {
+                        "error": "No se encontró un extractor adecuado para este tipo de documento"
                     }
-                    descripcion = descripcion_dict.get(tipo_documento, "DOCUMENTO DESCONOCIDO")
-                
-            # Eliminar coberturas y servicios con costo
+            
+            # **4. Rellenar estructura base con datos extraídos**
             if datos_completos_extraidos:
-                campos_a_eliminar = [
-                    "Coberturas Adicionales", "Coberturas Incluidas", "Coberturas Amparadas",
-                    "Servicios con costo", "Servicios con Costo", "servicios con costo",
-                    "Coberturas adicionales con costo"
-                ]
-                for campo in campos_a_eliminar:
-                    if campo in datos_completos_extraidos:
-                        del datos_completos_extraidos[campo]
+                # Eliminar campos que no deben estar en la respuesta
+                campos_a_excluir = []
+                
+                for key, value in datos_completos_extraidos.items():
+                    # Transferir todos los campos a la respuesta base
+                    # Si el campo no está en la estructura base, lo añadimos
+                    if key not in campos_a_excluir:
+                        if key not in respuesta_poliza_base:
+                            # Añadir el campo nuevo a la estructura base
+                            respuesta_poliza_base[key] = value
+                            logging.info(f"Campo nuevo añadido a la respuesta: {key}")
+                        else:
+                            # Actualizar valor si no es "0" o None
+                            if value is not None and value != "0":
+                                respuesta_poliza_base[key] = value
             
             # Extraer tipo de pago del campo nombre si existe
             self._procesar_tipo_pago(datos_completos_extraidos)
@@ -483,70 +515,32 @@ class PolizaProcessor:
             self._normalizar_fechas(datos_completos_extraidos)
             
             # Rellenar la estructura base con datos completos extraídos
-            logging.info(f"Rellenando estructura base con datos_completos para {descripcion}")
-            for key, default_value in respuesta_poliza_base.items():
-                # Usar el valor extraído si existe y no es "0" o None (a menos que el default sea numérico)
-                valor_extraido = datos_completos_extraidos.get(key)
-                if valor_extraido is not None and valor_extraido != "0":
-                    respuesta_poliza_base[key] = str(valor_extraido) # Convertir a string por si acaso
-                # Si el valor extraído es None o "0", pero el default es numérico ("0.00"), mantener "0.00"
-                elif (valor_extraido is None or valor_extraido == "0") and isinstance(default_value, str) and default_value == "0.00":
-                     respuesta_poliza_base[key] = "0.00"
-                # En otros casos (valor no encontrado o es "0" y default no es numérico), mantener default
-            
-            # Mapeo de campos adicionales que puedan tener nombres diferentes
-            mapeo_campos = {
-                "suma asegurada": "Suma asegurada",
-                "Suma Asegurada": "Suma asegurada",
-                "prima neta": "Prima Neta",
-                "i.v.a.": "I.V.A.",
-                "I.V.A": "I.V.A.",
-                "precio total": "Prima anual total",
-                "Precio total": "Prima anual total",
-                "tipo de pago": "Tipo de pago",
-                "Tipo de Plan": "Tipo de plan"
+            if datos_completos_extraidos:
+                for key, value in datos_completos_extraidos.items():
+                    # Si el valor es diferente de "0" o None, actualizar en la estructura base
+                    if value is not None and value != "0" and key in respuesta_poliza_base:
+                        respuesta_poliza_base[key] = value
+
+            # **5. Preparar respuesta financiera**
+            respuesta_financiera_base = {
+                "prima_neta": "0.00",
+                "gastos_expedicion": "0.00",
+                "iva": "0.00",
+                "precio_total": "0.00",
+                "tasa_financiamiento": "0.00",
+                "prima_mensual": "0.00",
+                "descuento_familiar": "0.00",
+                "cesion_comision": "0.00",
+                "recargo_pago_fraccionado": "0.00",
+                "ramo": "OTRO",
+                "tipo_endoso": descripcion
             }
             
-            # Aplicar mapeo de campos
-            for key_origen, key_destino in mapeo_campos.items():
-                if key_origen in datos_completos_extraidos and key_origen != key_destino:
-                    valor = datos_completos_extraidos.get(key_origen)
-                    if valor is not None and valor != "0" and respuesta_poliza_base.get(key_destino) == "0.00":
-                        respuesta_poliza_base[key_destino] = str(valor)
-            
-            if datos_financieros_extraidos:
-                logging.info(f"Rellenando estructura financiera base con datos_financieros para {descripcion}")
-                # Mapear claves de backend a frontend
-                respuesta_financiera_base["Prima neta"] = datos_financieros_extraidos.get("prima_neta", "0.00")
-                respuesta_financiera_base["Gastos por expedición"] = datos_financieros_extraidos.get("gastos_expedicion", "0.00")
-                respuesta_financiera_base["I.V.A."] = datos_financieros_extraidos.get("iva", "0.00")
-                respuesta_financiera_base["Precio total"] = datos_financieros_extraidos.get("precio_total", "0.00")
-                respuesta_financiera_base["Tasa de financiamiento"] = datos_financieros_extraidos.get("tasa_financiamiento", "0.00")
-                respuesta_financiera_base["Prima mensual"] = datos_financieros_extraidos.get("prima_mensual", "0.00")
-                # Agregar mapeo para los nuevos campos de pólizas de salud familiar
-                respuesta_financiera_base["Descuento familiar"] = datos_financieros_extraidos.get("descuento_familiar", "0.00")
-                respuesta_financiera_base["Cesión de Comisión"] = datos_financieros_extraidos.get("cesion_comision", "0.00")
-                respuesta_financiera_base["Recargo por pago fraccionado"] = datos_financieros_extraidos.get("recargo_pago_fraccionado", "0.00")
-                
-                # Registrar los datos financieros para depuración
-                logging.info(f"Datos financieros mapeados: {json.dumps(respuesta_financiera_base, ensure_ascii=False, indent=2)}")
-            
-            # **3. Formatear valores numéricos en ambas estructuras**
-            campos_numericos_poliza = ["Prima Neta", "Prima anual total", "Prima mensual", "Suma asegurada", "I.V.A."]
-            for key in campos_numericos_poliza:
-                if key in respuesta_poliza_base:
-                    try:
-                        valor_num = float(str(respuesta_poliza_base[key]).replace(',',''))
-                        respuesta_poliza_base[key] = f"{valor_num:.2f}"
-                    except (ValueError, TypeError):
-                        respuesta_poliza_base[key] = "0.00" # Default si la conversión falla
-
-            for key in respuesta_financiera_base:
-                try:
-                    valor_num = float(str(respuesta_financiera_base[key]).replace(',',''))
-                    respuesta_financiera_base[key] = f"{valor_num:.2f}"
-                except (ValueError, TypeError):
-                    respuesta_financiera_base[key] = "0.00"
+            # Rellenar datos financieros si existen
+            if datos_financieros:
+                for key, value in datos_financieros.items():
+                    if key in respuesta_financiera_base:
+                        respuesta_financiera_base[key] = value
             
             # Asegurarse de que los datos financieros incluyan el ramo y tipo_endoso
             if tipo_documento == "ENDOSO_A":
@@ -586,7 +580,7 @@ class PolizaProcessor:
                 ramo = "OTRO"
                 respuesta_financiera_base["ramo"] = ramo
                 respuesta_financiera_base["tipo_endoso"] = descripcion or "DOCUMENTO"
-            
+                
             # Para documentos de salud familiar, asegurar que los campos especiales estén incluidos
             if tipo_documento in ["SALUD_FAMILIAR", "SALUD_FAMILIAR_VARIANTEF", "SALUD_COLECTIVO"]:
                 logging.info(f"Preparando datos para documento de salud {tipo_documento}")
@@ -616,34 +610,28 @@ class PolizaProcessor:
                     else:
                         respuesta_poliza_base["Url"] = "https://rinoapps.com/condiciones/salud_familiar.pdf"
             
-            # Unir las dos estructuras en el resultado final
-            resultado = {
+            # Respuesta final
+            respuesta = {
                 "tipo_documento": tipo_documento,
                 "descripcion": descripcion,
-                "ramo": ramo
+                "datos_financieros": respuesta_financiera_base,
+                "datos_completos": respuesta_poliza_base
             }
             
-            # Agregar datos financieros directamente en la raíz
-            for key, value in respuesta_financiera_base.items():
-                if key not in ["ramo", "tipo_endoso"]:  # Evitar duplicados
-                    resultado[key] = value
-            
-            # Agregar datos completos directamente en la raíz
-            for key, value in respuesta_poliza_base.items():
-                # Evitar duplicados con datos financieros
-                if key not in resultado:
-                    resultado[key] = value
-            
-            # Conservar el tipo_endoso
-            resultado["tipo_endoso"] = respuesta_financiera_base.get("tipo_endoso", "")
-            
-            return resultado
-
+            return respuesta
+        
         except Exception as e:
-            logging.error(f"Error procesando PDF: {str(e)}")
-            raise
+            logging.error(f"Error al procesar PDF: {str(e)}")
+            return {"error": str(e)}
+            
         finally:
-            shutil.rmtree(temp_dir)
+            # Limpiar archivos temporales
+            if pdf_path.exists():
+                pdf_path.unlink()
+            try:
+                shutil.rmtree(temp_dir)
+            except Exception as e:
+                logging.warning(f"Error al eliminar directorio temporal {temp_dir}: {str(e)}")
 
 processor = PolizaProcessor()
 
