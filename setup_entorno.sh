@@ -31,6 +31,15 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Actualizar pip e instalar setuptools y wheel primero (necesario para Python 3.12)
+echo -e "${BLUE}Actualizando pip e instalando dependencias básicas...${NC}"
+pip install --upgrade pip setuptools wheel
+if [ $? -ne 0 ]; then
+    echo -e "${RED}Error al actualizar pip o instalar setuptools/wheel.${NC}"
+    exit 1
+fi
+echo -e "${GREEN}Pip actualizado y setuptools/wheel instalados correctamente.${NC}"
+
 # Instalar requerimientos
 echo -e "${BLUE}Instalando dependencias...${NC}"
 pip install -r requirements.txt
