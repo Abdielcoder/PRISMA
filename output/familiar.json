@@ -1,0 +1,117 @@
+{
+    "Clave Agente": "000617763",
+    "Promotor": "630162",
+    "Código Postal": "23453",
+    "Domicilio del contratante": "ZAPATA SN 101, EL PED",
+    "Ciudad del contratante": "CABO SAN LUCAS          Fecha de inicio de vigencia",
+    "Fecha de emisión": "03/04/2025",
+    "Fecha de fin de vigencia": "03/05/2026",
+    "Fecha de inicio de vigencia": "03/05/2025",
+    "Frecuencia de pago": "Anual",
+    "Tipo de pago": "Agente",
+    "Nombre del agente": "RODOLFO LOPEZ GONZALEZ\n                                                            SumaAsegurada",
+    "Nombre del contratante": "ALCERRECA DAUMAS, MARCO",
+    "Nombre del asegurado titular": "SLAME ROMERO, LORENA",
+    "Domicilio del asegurado": "SIERRA SAN JAVIER DEPTO CARINI 118A SN TERRANOVA",
+    "Ciudad del asegurado": "LOS CABOS",
+    "Número de póliza": "Gastos",
+    "Solicitud": "0",
+    "Tipo de Plan": "Solicitud\n                                                                               Flex Plus",
+    "R.F.C.": "AEDM840505PE3",
+    "Teléfono": "6241592552",
+    "Moneda": "MXN",
+    "Prima Neta": "25283.79",
+    "Prima anual total": "31359.20",
+    "I.V.A.": "4325.41",
+    "Suma asegurada": "90,000,000 M.N.",
+    "Deducible": "25,500 M.N.",
+    "Coaseguro": "10 %",
+    "Tope de Coaseguro": "58,000 M.N.",
+    "Gama Hospitalaria": "Diamante",
+    "Tipo de Red": "Abierta",
+    "Tabulador Médico": "Roble",
+    "Periodo de pago de siniestro": "100 años",
+    "Recargo por pago fraccionado": "0.00",
+    "Derecho de póliza": "1750.00",
+    "Zona Tarificación": "12",
+    "Descuento familiar": "0.00",
+    "Cesión de Comisión": "0.00",
+    "Emergencias en el Extranjero": "Max",
+    "Medicamentos fuera del hospital": "Básica",
+    "Maternidad": "17000.00      N/A      N/A           Gama Hos",
+    "Protección Dental": "N/A           N/A       Cos",
+    "Tu Médico 24 Hrs": "N/A           N/A       Costo Preferencial   Tipo de Red                             A",
+    "Tipo de plan solicitado": "Individual",
+    "Deducible Cero por Accidente": "No Aplica                      No Aplica             10 %",
+    "Cobertura Nacional": "De acuerdo a Condiciones Generales",
+    "Complicaciones de GMM no cubiertos": "De acuerdo a Condiciones Generales",
+    "Url": "https://rinoapps.com/condiciones/salud_colectivo.pdf",
+    "Coberturas Incluidas": [
+        {
+            "Nombre": "Maternidad",
+            "Suma Asegurada": "Incluida",
+            "Deducible": "N/A",
+            "Coaseguro": "N/A"
+        },
+        {
+            "Nombre": "Protección Dental",
+            "Suma Asegurada": "Incluida",
+            "Deducible": "N/A",
+            "Coaseguro": "N/A"
+        },
+        {
+            "Nombre": "Tu Médico 24 Hrs",
+            "Suma Asegurada": "Incluida",
+            "Deducible": "N/A",
+            "Coaseguro": "N/A"
+        },
+        {
+            "Nombre": "Beneficio de Atención Médica",
+            "Suma Asegurada": "Incluida",
+            "Deducible": "N/A",
+            "Coaseguro": "N/A"
+        }
+    ],
+    "Coberturas Adicionales": [
+        {
+            "Nombre": "Emergencias en el Extranjero",
+            "Suma Asegurada": "Max",
+            "Deducible": "100,000 USD                 $100 USD           No Aplica",
+            "Coaseguro": "N/A"
+        },
+        {
+            "Nombre": "Medicamentos fuera del hospital",
+            "Suma Asegurada": "Básica",
+            "Deducible": "25,500 M.N.      10",
+            "Coaseguro": "N/A"
+        },
+        {
+            "Nombre": "Complicaciones de GMM no cubiertos",
+            "Suma Asegurada": "De acuerdo a Condiciones Generales",
+            "Deducible": "25,500 M.N.      10",
+            "Coaseguro": "N/A"
+        },
+        {
+            "Nombre": "Deducible Cero por Accidente",
+            "Suma Asegurada": "No Aplica                      No Aplica             10 %",
+            "Deducible": "25,500 M.N.      10",
+            "Coaseguro": "N/A"
+        },
+        {
+            "Nombre": "Cobertura Nacional",
+            "Suma Asegurada": "De acuerdo a Condiciones Generales",
+            "Deducible": "25,500 M.N.      10",
+            "Coaseguro": "N/A"
+        }
+    ],
+    "Servicios con Costo": [
+        {
+            "Nombre": "Servicios de Asistencia en Viajes",
+            "Costo": ""
+        },
+        {
+            "Nombre": "Cliente Distinguido",
+            "Costo": ""
+        }
+    ]
+}

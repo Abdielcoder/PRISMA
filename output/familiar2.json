@@ -1,0 +1,58 @@
+{
+    "Clave Agente": "0",
+    "Promotor": "0",
+    "Código Postal": "03200",
+    "Domicilio del contratante": "ANTONIO SALVATIERRA 7",
+    "Ciudad del contratante": "",
+    "Estado": "BAJA CALIFORNIA",
+    "Fecha de emisión": "8 DE ABRIL DE 2025",
+    "Fecha de fin de vigencia": "14/03/2026",
+    "Fecha de inicio de vigencia": "14/03/2025",
+    "Frecuencia de pago": "ANUAL",
+    "Tipo de pago": "0",
+    "Nombre del agente": "0",
+    "Nombre del contratante": "MACIAS ARGUILEZ, ALEJANDRO",
+    "Nombre del asegurado titular": "0",
+    "Domicilio del asegurado": "0",
+    "Ciudad del asegurado": "0",
+    "Número de póliza": "Gastos",
+    "Solicitud": "32417995",
+    "Tipo de Plan": "GASTOS MEDICOS PLUS",
+    "R.F.C.": "MAAA590323R28",
+    "Teléfono": "6232738",
+    "Moneda": "NACIONAL",
+    "Prima Neta": "143215.45",
+    "Prima anual total": "168159.92",
+    "Prima base I.V.A.": "144965.45",
+    "I.V.A.": "144965.45",
+    "Suma Asegurada": "Sin Límite",
+    "Deducible": "55,000 M.N.",
+    "Coaseguro": "10%",
+    "Coaseguro Máximo": "68,000 M.N.",
+    "Tope de Coaseguro": "68,000 M.N.",
+    "Tipo de Red": "0",
+    "Tabulador Médico": "0",
+    "Periodo de pago de siniestro": "0",
+    "Recargo por pago fraccionado": "0.00",
+    "Gastos de Expedición": "1750.00",
+    "Descuento familiar": "0.00",
+    "Cesión de Comisión": "0.00",
+    "Coberturas Amparadas": [
+        {
+            "Nombre": "Límites",
+            "Límites": "Sin especificar"
+        },
+        {
+            "Nombre": "PROTECCION DENTAL",
+            "Límites": "SIN COSTO"
+        },
+        {
+            "Nombre": "SMGM Salario Mínimo General Mensual",
+            "Límites": "Sin especificar"
+        },
+        {
+            "Nombre": "USD Dólares de Estados Unidos de Norteamérica",
+            "Límites": "Sin especificar"
+        }
+    ]
+}
