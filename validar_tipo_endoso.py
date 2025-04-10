@@ -43,7 +43,14 @@ def extract_text_from_pdf(pdf_path: str) -> str:
         doc = fitz.open(pdf_path)
         text = ""
         for page in doc:
-            texto_blocks = page.get_text("blocks") + "\n"
+            # Procesar correctamente los bloques (son una lista, no un string)
+            blocks = page.get_text("blocks")
+            texto_blocks = ""
+            for b in blocks:
+                # Cada bloque es una tupla con información; el texto está en el índice 4
+                if len(b) > 4:
+                    texto_blocks += b[4] + " "
+            texto_blocks += "\n"
             text += texto_blocks
         doc.close()
         return text
