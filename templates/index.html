@@ -972,6 +972,12 @@
                             // Guardar los datos de la póliza en el elemento pdfItem
                             pdfItem.setAttribute('data-poliza-data', JSON.stringify(data.poliza_data));
                             
+                            // Guardar la vista previa completa si está disponible
+                            if (data.vista_previa_completa) {
+                                console.log("Vista previa completa recibida:", data.vista_previa_completa);
+                                pdfItem.setAttribute('data-vista-previa', JSON.stringify(data.vista_previa_completa));
+                            }
+                            
                             // Mostrar todos los datos de la póliza en lugar de los financieros
                             displayPolizaVidaData(data.poliza_data, pdfItem, true);
                             previewElement.setAttribute('data-financial', JSON.stringify(data.financial_data));
@@ -1231,6 +1237,30 @@
                 </div>
             `;
             financialDataDiv.appendChild(popupDiv);
+
+            // Verificar si es SALUD_FAMILIAR para añadir botón de ver todos los datos
+            const isDocumentoSaludFamiliar = data.ramo === "SALUD" || data.tipo_endoso === "PÓLIZA DE GASTOS MÉDICOS MAYORES FAMILIAR";
+            
+            if (isDocumentoSaludFamiliar) {
+                const verCompletosBtn = document.createElement('button');
+                verCompletosBtn.className = 'btn bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 px-2 rounded text-sm mb-4 w-full';
+                verCompletosBtn.innerHTML = '<i class="fas fa-list-alt mr-2"></i>Ver datos completos del documento';
+                verCompletosBtn.addEventListener('click', () => {
+                    // Obtener el elemento pdfItem que contiene los datos completos
+                    const pdfItem = container.closest('.pdf-item');
+                    if (pdfItem) {
+                        // Simular clic en la imagen para abrir el modal con todos los datos
+                        const previewImg = pdfItem.querySelector('.preview-container img');
+                        if (previewImg) {
+                            previewImg.click();
+                        } else {
+                            // Si no hay imagen, intentar abrir modal directamente con los datos
+                            displayFullDocumentData(pdfItem);
+                        }
+                    }
+                });
+                financialDataDiv.appendChild(verCompletosBtn);
+            }
 
             // Crear un array de campos estándar para asegurarnos de que siempre se incluyan
             const camposEstandar = [
@@ -1526,7 +1556,8 @@
                 
                 const isSaludFamiliar = tipoEndosoElement && (
                     tipoEndosoElement.textContent === "PÓLIZA DE GASTOS MÉDICOS MAYORES FAMILIAR" ||
-                    tipoEndosoElement.textContent === "PÓLIZA DE GASTOS MÉDICOS MAYORES FAMILIAR (VARIANTE F)"
+                    tipoEndosoElement.textContent === "PÓLIZA DE GASTOS MÉDICOS MAYORES FAMILIAR (VARIANTE F)" ||
+                    tipoEndosoElement.textContent === "GASTOS MÉDICOS MAYORES FAMILIAR"
                 );
                 
                 // Obtener datos de la póliza si aplica
@@ -1534,6 +1565,30 @@
                 if ((isPolizaVida || isSaludFamiliar) && pdfItem && pdfItem.hasAttribute('data-poliza-data')) {
                     try {
                         polizaData = JSON.parse(pdfItem.getAttribute('data-poliza-data'));
+                        console.log("Datos de póliza obtenidos para el modal:", polizaData);
+                        
+                        // Para documentos de salud familiar, asegurarnos de tener todos los datos
+                        if (isSaludFamiliar && (!polizaData["Coberturas Incluidas"] || !polizaData["Coberturas Adicionales"])) {
+                            console.log("Datos de póliza de salud familiar incompletos, buscando en vista_previa_completa");
+                            
+                            // Intentar obtener los datos completos desde un atributo alternativo
+                            const vistaPrevia = pdfItem.getAttribute('data-vista-previa');
+                            if (vistaPrevia) {
+                                try {
+                                    const vistaPreviaData = JSON.parse(vistaPrevia);
+                                    console.log("Datos encontrados en vista previa:", vistaPreviaData);
+                                    
+                                    // Complementar datos faltantes
+                                    for (const key in vistaPreviaData) {
+                                        if (!polizaData[key]) {
+                                            polizaData[key] = vistaPreviaData[key];
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.error("Error al procesar vista previa:", e);
+                                }
+                            }
+                        }
                     } catch (e) {
                         console.error("Error al leer datos de póliza:", e);
                     }
@@ -1670,122 +1725,202 @@
                             "Recargo por pago fraccionado",
                             "Derecho de póliza"
                         ];
+
+                        // Campos de información general de la póliza
+                        const camposGenerales = [
+                            "Número de póliza",
+                            "Nombre del contratante",
+                            "Nombre del asegurado titular",
+                            "Domicilio del contratante",
+                            "Ciudad del contratante",
+                            "Código Postal",
+                            "Domicilio del asegurado", 
+                            "Ciudad del asegurado",
+                            "R.F.C.",
+                            "Teléfono",
+                            "Clave Agente",
+                            "Nombre del agente",
+                            "Tipo de Plan",
+                            "Fecha de emisión",
+                            "Fecha de inicio de vigencia",
+                            "Fecha de fin de vigencia",
+                            "Frecuencia de pago",
+                            "Tipo de pago"
+                        ];
+
+                        // Campos de condiciones contratadas
+                        const camposCondiciones = [
+                            "Suma Asegurada",
+                            "Deducible",
+                            "Coaseguro",
+                            "Tope de Coaseguro",
+                            "Gama Hospitalaria",
+                            "Tipo de Red",
+                            "Tabulador Médico",
+                            "Periodo de pago de siniestro",
+                            "Zona Tarificación"
+                        ];
                         
                         // Si tenemos datos directos de la póliza
                         if (polizaData) {
                             console.log("Datos de póliza de salud familiar para modal:", polizaData);
                             
-                            // Primero mostrar campos prioritarios
-                            camposPrioritarios.forEach(campo => {
-                                if (campo in polizaData && polizaData[campo] !== "0" && polizaData[campo] !== "0.00") {
-                                    let valor = polizaData[campo];
-                                    
-                                    // Formatear valores numéricos
-                                    try {
-                                        const numVal = parseFloat(String(valor).replace(',', ''));
-                                        if (!isNaN(numVal)) {
-                                            valor = numVal.toLocaleString('es-MX', { 
-                                                style: 'currency', 
-                                                currency: 'MXN',
-                                                minimumFractionDigits: 2,
-                                                maximumFractionDigits: 2 
-                                            });
-                                        }
-                                    } catch (e) {
-                                        console.error(`Error al formatear ${campo}: ${valor}`, e);
-                                    }
-                                    
-                                    const dataItem = document.createElement('div');
-                                    dataItem.className = 'modal-data-item';
-                                    dataItem.innerHTML = `
-                                        <div class="modal-data-label">${campo}</div>
-                                        <div class="modal-data-value">${valor}</div>
-                                    `;
-                                    modalData.appendChild(dataItem);
-                                }
-                            });
-                            
-                            // Luego agregar el resto de los campos
-                            for (const [key, value] of Object.entries(polizaData)) {
-                                // Saltar campos ya mostrados o nulos
-                                if (value === null || value === undefined || 
-                                    key === "Coberturas adicionales con costo" || 
-                                    camposPrioritarios.includes(key)) continue;
+                            // Función para mostrar una sección con un título y sus campos
+                            const addSection = (title, campos) => {
+                                // Añadir título de sección
+                                const sectionTitle = document.createElement('div');
+                                sectionTitle.className = 'modal-section-title mt-4 mb-2 text-lg font-bold text-center border-b border-gray-600 pb-1';
+                                sectionTitle.textContent = title;
+                                modalData.appendChild(sectionTitle);
                                 
-                                let displayValue = value === "0" ? "No disponible" : value;
-                                
-                                // Formatear valores monetarios si es necesario
-                                if (value !== "0" && (
-                                    key.includes("Prima") || key.includes("precio") || 
-                                    key.includes("Precio") || key.includes("costo") || 
-                                    key.includes("Costo") || key.includes("Suma")
-                                )) {
-                                    try {
-                                        // Verificar si el valor ya tiene formato de moneda
-                                        if (typeof value === 'string') {
-                                            // Elimina cualquier caracter no numérico excepto punto y coma
-                                            const numValue = value.replace(/[^\d,.]/g, '');
-                                            if (numValue) {
-                                                // Reemplaza coma por punto para la conversión numérica
-                                                const normalizedValue = numValue.includes(',') && !numValue.includes('.') ? 
-                                                    numValue.replace(',', '.') : numValue.replace(',', '');
-                                                
-                                                const parsedValue = parseFloat(normalizedValue);
-                                                
-                                                if (!isNaN(parsedValue)) {
-                                                    displayValue = parsedValue.toLocaleString('es-MX', { 
+                                // Mostrar campos de esta sección
+                                let camposMostrados = 0;
+                                campos.forEach(campo => {
+                                    if (campo in polizaData && polizaData[campo] !== "0" && polizaData[campo] !== "0.00") {
+                                        let valor = polizaData[campo];
+                                        
+                                        // Formatear valores numéricos monetarios
+                                        if (["Prima Neta", "Prima anual total", "I.V.A.", "Descuento familiar", "Cesión de Comisión", 
+                                            "Recargo por pago fraccionado", "Derecho de póliza"].includes(campo)) {
+                                            try {
+                                                const numVal = parseFloat(String(valor).replace(',', ''));
+                                                if (!isNaN(numVal)) {
+                                                    valor = numVal.toLocaleString('es-MX', { 
                                                         style: 'currency', 
                                                         currency: 'MXN',
                                                         minimumFractionDigits: 2,
                                                         maximumFractionDigits: 2 
                                                     });
                                                 }
+                                            } catch (e) {
+                                                console.error(`Error al formatear ${campo}: ${valor}`, e);
                                             }
                                         }
-                                    } catch (e) {
-                                        console.error(`Error al formatear valor monetario en modal: ${key}=${value}`, e);
+                                        
+                                        const dataItem = document.createElement('div');
+                                        dataItem.className = 'modal-data-item';
+                                        dataItem.innerHTML = `
+                                            <div class="modal-data-label">${campo}</div>
+                                            <div class="modal-data-value">${valor}</div>
+                                        `;
+                                        modalData.appendChild(dataItem);
+                                        camposMostrados++;
                                     }
+                                });
+                                
+                                return camposMostrados;
+                            };
+                            
+                            // Añadir las secciones en orden
+                            addSection("Información Financiera", camposPrioritarios);
+                            addSection("Información General", camposGenerales);
+                            addSection("Condiciones Contratadas", camposCondiciones);
+                            
+                            // Añadir sección de coberturas incluidas
+                            if (polizaData["Coberturas Incluidas"] && polizaData["Coberturas Incluidas"].length > 0) {
+                                const coberturasTitle = document.createElement('div');
+                                coberturasTitle.className = 'modal-section-title mt-4 mb-2 text-lg font-bold text-center border-b border-gray-600 pb-1';
+                                coberturasTitle.textContent = "Coberturas Incluidas";
+                                modalData.appendChild(coberturasTitle);
+                                
+                                polizaData["Coberturas Incluidas"].forEach(cobertura => {
+                                    const coberturaItem = document.createElement('div');
+                                    coberturaItem.className = 'modal-data-item';
+                                    coberturaItem.innerHTML = `
+                                        <div class="modal-data-label">${cobertura.Nombre}</div>
+                                        <div class="modal-data-value">
+                                            <div>Suma Asegurada: ${cobertura["Suma Asegurada"]}</div>
+                                            <div>Deducible: ${cobertura.Deducible}</div>
+                                            <div>Coaseguro: ${cobertura.Coaseguro}</div>
+                                        </div>
+                                    `;
+                                    modalData.appendChild(coberturaItem);
+                                });
+                            }
+                            
+                            // Añadir sección de coberturas adicionales
+                            if (polizaData["Coberturas Adicionales"] && polizaData["Coberturas Adicionales"].length > 0) {
+                                const coberturasAdicionalesTitle = document.createElement('div');
+                                coberturasAdicionalesTitle.className = 'modal-section-title mt-4 mb-2 text-lg font-bold text-center border-b border-gray-600 pb-1';
+                                coberturasAdicionalesTitle.textContent = "Coberturas Adicionales";
+                                modalData.appendChild(coberturasAdicionalesTitle);
+                                
+                                polizaData["Coberturas Adicionales"].forEach(cobertura => {
+                                    const coberturaItem = document.createElement('div');
+                                    coberturaItem.className = 'modal-data-item';
+                                    coberturaItem.innerHTML = `
+                                        <div class="modal-data-label">${cobertura.Nombre}</div>
+                                        <div class="modal-data-value">
+                                            <div>Suma Asegurada: ${cobertura["Suma Asegurada"]}</div>
+                                            <div>Deducible: ${cobertura.Deducible}</div>
+                                            <div>Coaseguro: ${cobertura.Coaseguro}</div>
+                                        </div>
+                                    `;
+                                    modalData.appendChild(coberturaItem);
+                                });
+                            }
+                            
+                            // Añadir sección de servicios con costo
+                            if (polizaData["Servicios con Costo"] && polizaData["Servicios con Costo"].length > 0) {
+                                const serviciosTitle = document.createElement('div');
+                                serviciosTitle.className = 'modal-section-title mt-4 mb-2 text-lg font-bold text-center border-b border-gray-600 pb-1';
+                                serviciosTitle.textContent = "Servicios con Costo";
+                                modalData.appendChild(serviciosTitle);
+                                
+                                polizaData["Servicios con Costo"].forEach(servicio => {
+                                    const servicioItem = document.createElement('div');
+                                    servicioItem.className = 'modal-data-item';
+                                    servicioItem.innerHTML = `
+                                        <div class="modal-data-label">${servicio.Nombre}</div>
+                                        <div class="modal-data-value">Costo: ${servicio.Costo}</div>
+                                    `;
+                                    modalData.appendChild(servicioItem);
+                                });
+                            }
+                            
+                            // Mostrar otros campos que no hayamos incluido específicamente
+                            let otrosCamposMostrados = 0;
+                            for (const [key, value] of Object.entries(polizaData)) {
+                                // Ignorar los campos que ya mostramos y estructuras que procesamos por separado
+                                if ([...camposPrioritarios, ...camposGenerales, ...camposCondiciones].includes(key) || 
+                                    key === "Coberturas Incluidas" || 
+                                    key === "Coberturas Adicionales" || 
+                                    key === "Servicios con Costo" ||
+                                    key === "file_path" ||
+                                    key === "vista_previa") {
+                                    continue;
                                 }
                                 
+                                // Ignorar campos vacíos o con valor 0
+                                if (value === "0" || value === 0 || value === "0.00" || value === null || value === undefined) {
+                                    continue;
+                                }
+                                
+                                // Si es el primer otro campo, añadir título de sección
+                                if (otrosCamposMostrados === 0) {
+                                    const otrosTitle = document.createElement('div');
+                                    otrosTitle.className = 'modal-section-title mt-4 mb-2 text-lg font-bold text-center border-b border-gray-600 pb-1';
+                                    otrosTitle.textContent = "Información Adicional";
+                                    modalData.appendChild(otrosTitle);
+                                }
+                                
+                                // Añadir el campo adicional
                                 const dataItem = document.createElement('div');
                                 dataItem.className = 'modal-data-item';
                                 dataItem.innerHTML = `
                                     <div class="modal-data-label">${key}</div>
-                                    <div class="modal-data-value">${displayValue}</div>
+                                    <div class="modal-data-value">${value}</div>
                                 `;
                                 modalData.appendChild(dataItem);
+                                otrosCamposMostrados++;
                             }
                         } else {
-                            // Si no tenemos datos directos, clonar del DOM
-                            const polizaDataSection = pdfItem ? pdfItem.querySelector('.pdf-data-section') : null;
-                            if (polizaDataSection) {
-                                const polizaItems = polizaDataSection.querySelectorAll('.data-item');
-                                
-                                polizaItems.forEach(item => {
-                                    const clonedItem = document.createElement('div');
-                                    clonedItem.className = 'modal-data-item';
-                                    
-                                    const label = item.querySelector('.data-label');
-                                    const value = item.querySelector('.data-value');
-                                    
-                                    if (label && value) {
-                                        clonedItem.innerHTML = `
-                                            <div class="modal-data-label">${label.textContent}</div>
-                                            <div class="modal-data-value">${value.textContent}</div>
-                                        `;
-                                        modalData.appendChild(clonedItem);
-                                    }
-                                });
-                            }
-                        }
-                        
-                        // Si no hay datos en el modal, mostrar mensaje
-                        if (modalData.children.length <= 1) {
+                            // Si no hay datos de póliza disponibles
                             const noDataItem = document.createElement('div');
                             noDataItem.className = 'modal-data-item';
                             noDataItem.innerHTML = `
                                 <div class="modal-data-label">Información</div>
-                                <div class="modal-data-value">No hay datos disponibles para esta póliza</div>
+                                <div class="modal-data-value">No hay datos completos disponibles para esta póliza</div>
                             `;
                             modalData.appendChild(noDataItem);
                         }
@@ -1892,6 +2027,239 @@
                 }
             }
         });
+
+        // Función para mostrar los datos completos del documento en un modal
+        function displayFullDocumentData(pdfItem) {
+            if (!pdfItem) return;
+            
+            // Obtener datos de la póliza
+            let polizaData = null;
+            try {
+                polizaData = JSON.parse(pdfItem.getAttribute('data-poliza-data') || '{}');
+            } catch (e) {
+                console.error("Error al leer datos de póliza:", e);
+                return;
+            }
+            
+            // Si no hay datos suficientes, intentar obtenerlos desde la vista previa
+            if (Object.keys(polizaData).length === 0) {
+                try {
+                    const vistaPrevia = pdfItem.getAttribute('data-vista-previa');
+                    if (vistaPrevia) {
+                        polizaData = JSON.parse(vistaPrevia);
+                    }
+                } catch (e) {
+                    console.error("Error al leer vista previa:", e);
+                }
+            }
+            
+            // Si aún no hay datos, mostrar mensaje de error
+            if (!polizaData || Object.keys(polizaData).length === 0) {
+                alert("No hay datos completos disponibles para este documento");
+                return;
+            }
+            
+            // Obtener tipo de documento
+            const tipoEndosoElement = pdfItem.querySelector('.document-tipo-endoso');
+            const tipoDocumento = tipoEndosoElement ? tipoEndosoElement.textContent : "Documento";
+            
+            // Abrir el modal
+            const modal = document.getElementById('preview-modal');
+            modal.style.display = 'flex';
+            
+            // Actualizar título del modal
+            const modalTitle = document.querySelector('.modal-data-title');
+            if (modalTitle) {
+                modalTitle.textContent = `Datos Completos - ${tipoDocumento}`;
+            }
+            
+            // Obtener contenedor de datos del modal
+            const modalData = document.querySelector('.modal-data-container');
+            if (!modalData) return;
+            
+            // Limpiar el contenedor de datos
+            modalData.innerHTML = `<h3 class="modal-data-title">Datos Completos - ${tipoDocumento}</h3>`;
+            
+            // Función para mostrar una sección con un título y sus campos
+            const addSection = (title, campos) => {
+                // Añadir título de sección
+                const sectionTitle = document.createElement('div');
+                sectionTitle.className = 'modal-section-title mt-4 mb-2 text-lg font-bold text-center border-b border-gray-600 pb-1';
+                sectionTitle.textContent = title;
+                modalData.appendChild(sectionTitle);
+                
+                // Mostrar campos de esta sección
+                let camposMostrados = 0;
+                
+                // Si 'campos' es un objeto (para secciones generales)
+                if (typeof campos === 'object' && !Array.isArray(campos)) {
+                    for (const [key, value] of Object.entries(campos)) {
+                        if (value === null || value === undefined || value === "0" || value === "0.00") continue;
+                        
+                        const dataItem = document.createElement('div');
+                        dataItem.className = 'modal-data-item';
+                        dataItem.innerHTML = `
+                            <div class="modal-data-label">${key}</div>
+                            <div class="modal-data-value">${value}</div>
+                        `;
+                        modalData.appendChild(dataItem);
+                        camposMostrados++;
+                    }
+                }
+                // Si 'campos' es un array (para lista de campos a buscar en polizaData)
+                else if (Array.isArray(campos)) {
+                    campos.forEach(campo => {
+                        if (campo in polizaData && polizaData[campo] !== "0" && polizaData[campo] !== "0.00") {
+                            let valor = polizaData[campo];
+                            
+                            // Formatear valores numéricos monetarios
+                            if (["Prima Neta", "Prima anual total", "I.V.A.", "Descuento familiar", "Cesión de Comisión", 
+                                "Recargo por pago fraccionado", "Derecho de póliza"].includes(campo)) {
+                                try {
+                                    const numVal = parseFloat(String(valor).replace(',', ''));
+                                    if (!isNaN(numVal)) {
+                                        valor = numVal.toLocaleString('es-MX', { 
+                                            style: 'currency', 
+                                            currency: 'MXN',
+                                            minimumFractionDigits: 2,
+                                            maximumFractionDigits: 2 
+                                        });
+                                    }
+                                } catch (e) {
+                                    console.error(`Error al formatear ${campo}: ${valor}`, e);
+                                }
+                            }
+                            
+                            const dataItem = document.createElement('div');
+                            dataItem.className = 'modal-data-item';
+                            dataItem.innerHTML = `
+                                <div class="modal-data-label">${campo}</div>
+                                <div class="modal-data-value">${valor}</div>
+                            `;
+                            modalData.appendChild(dataItem);
+                            camposMostrados++;
+                        }
+                    });
+                }
+                
+                return camposMostrados;
+            };
+            
+            // Definir campos prioritarios para documentos de salud familiar
+            const camposPrioritarios = [
+                "Prima Neta",
+                "Prima anual total",
+                "I.V.A.",
+                "Prima base I.V.A.",
+                "Gastos de Expedición",
+                "Descuento familiar",
+                "Cesión de Comisión",
+                "Recargo por pago fraccionado",
+                "Derecho de póliza"
+            ];
+            
+            // Campos de información general
+            const camposGenerales = [
+                "Número de póliza",
+                "Nombre del contratante",
+                "Nombre del asegurado titular",
+                "Domicilio del contratante",
+                "Ciudad del contratante",
+                "Código Postal",
+                "Domicilio del asegurado", 
+                "Ciudad del asegurado",
+                "R.F.C.",
+                "Teléfono",
+                "Clave Agente",
+                "Nombre del agente",
+                "Tipo de Plan",
+                "Fecha de emisión",
+                "Fecha de inicio de vigencia",
+                "Fecha de fin de vigencia",
+                "Frecuencia de pago",
+                "Tipo de pago"
+            ];
+            
+            // Campos de condiciones contratadas
+            const camposCondiciones = [
+                "Suma Asegurada",
+                "Deducible",
+                "Coaseguro",
+                "Tope de Coaseguro",
+                "Gama Hospitalaria",
+                "Tipo de Red",
+                "Tabulador Médico",
+                "Periodo de pago de siniestro",
+                "Zona Tarificación"
+            ];
+            
+            // Añadir las secciones en orden
+            addSection("Información Financiera", camposPrioritarios);
+            addSection("Información General", camposGenerales);
+            addSection("Condiciones Contratadas", camposCondiciones);
+            
+            // Añadir sección de coberturas incluidas
+            if (polizaData["Coberturas Incluidas"] && polizaData["Coberturas Incluidas"].length > 0) {
+                const coberturasTitle = document.createElement('div');
+                coberturasTitle.className = 'modal-section-title mt-4 mb-2 text-lg font-bold text-center border-b border-gray-600 pb-1';
+                coberturasTitle.textContent = "Coberturas Incluidas";
+                modalData.appendChild(coberturasTitle);
+                
+                polizaData["Coberturas Incluidas"].forEach(cobertura => {
+                    const coberturaItem = document.createElement('div');
+                    coberturaItem.className = 'modal-data-item';
+                    coberturaItem.innerHTML = `
+                        <div class="modal-data-label">${cobertura.Nombre}</div>
+                        <div class="modal-data-value">
+                            <div>Suma Asegurada: ${cobertura["Suma Asegurada"]}</div>
+                            <div>Deducible: ${cobertura.Deducible}</div>
+                            <div>Coaseguro: ${cobertura.Coaseguro}</div>
+                        </div>
+                    `;
+                    modalData.appendChild(coberturaItem);
+                });
+            }
+            
+            // Añadir sección de coberturas adicionales
+            if (polizaData["Coberturas Adicionales"] && polizaData["Coberturas Adicionales"].length > 0) {
+                const coberturasAdicionalesTitle = document.createElement('div');
+                coberturasAdicionalesTitle.className = 'modal-section-title mt-4 mb-2 text-lg font-bold text-center border-b border-gray-600 pb-1';
+                coberturasAdicionalesTitle.textContent = "Coberturas Adicionales";
+                modalData.appendChild(coberturasAdicionalesTitle);
+                
+                polizaData["Coberturas Adicionales"].forEach(cobertura => {
+                    const coberturaItem = document.createElement('div');
+                    coberturaItem.className = 'modal-data-item';
+                    coberturaItem.innerHTML = `
+                        <div class="modal-data-label">${cobertura.Nombre}</div>
+                        <div class="modal-data-value">
+                            <div>Suma Asegurada: ${cobertura["Suma Asegurada"]}</div>
+                            <div>Deducible: ${cobertura.Deducible}</div>
+                            <div>Coaseguro: ${cobertura.Coaseguro}</div>
+                        </div>
+                    `;
+                    modalData.appendChild(coberturaItem);
+                });
+            }
+            
+            // Añadir sección de servicios con costo
+            if (polizaData["Servicios con Costo"] && polizaData["Servicios con Costo"].length > 0) {
+                const serviciosTitle = document.createElement('div');
+                serviciosTitle.className = 'modal-section-title mt-4 mb-2 text-lg font-bold text-center border-b border-gray-600 pb-1';
+                serviciosTitle.textContent = "Servicios con Costo";
+                modalData.appendChild(serviciosTitle);
+                
+                polizaData["Servicios con Costo"].forEach(servicio => {
+                    const servicioItem = document.createElement('div');
+                    servicioItem.className = 'modal-data-item';
+                    servicioItem.innerHTML = `
+                        <div class="modal-data-label">${servicio.Nombre}</div>
+                        <div class="modal-data-value">Costo: ${servicio.Costo}</div>
+                    `;
+                    modalData.appendChild(servicioItem);
+                });
+            }
+        }
     </script>
 </body>
 </html> 

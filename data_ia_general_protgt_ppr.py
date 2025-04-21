@@ -161,8 +161,21 @@ def extraer_datos_poliza_aliados_ppr(pdf_path: str) -> Dict:
                         resultado[campo] = match.group(0).strip()
                     logging.info(f"Encontrado {campo}: {resultado[campo]}")
                 else:
-                    resultado[campo] = match.group(1).strip()
-                    logging.info(f"Encontrado {campo}: {resultado[campo]}")
+                    # Verificar si existen grupos capturados antes de acceder a ellos
+                    if match.groups() and len(match.groups()) > 0:
+                        # Encontrar el primer grupo que no sea None
+                        for grupo in match.groups():
+                            if grupo is not None:
+                                resultado[campo] = grupo.strip()
+                                break
+                        # Si no se encontró ningún grupo válido, usar el match completo
+                        if resultado[campo] == "0":
+                            resultado[campo] = match.group(0).strip()
+                            logging.warning(f"No se encontró grupo de captura para {campo}, usando match completo")
+                    else:
+                        # Si no hay grupos, usar el match completo
+                        resultado[campo] = match.group(0).strip()
+                        logging.warning(f"No se encontró grupo de captura para {campo}, usando match completo")
 
         # Post-procesamiento específico para Aliados PPR
 

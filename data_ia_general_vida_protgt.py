@@ -18,6 +18,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Variable global para modo debug
+DEBUG = os.environ.get("DEBUG", "0") == "1"
+
+def debug_print(mensaje, valor=None):
+    """
+    Imprime información de debugging si DEBUG=1
+    """
+    if DEBUG:
+        if valor is not None:
+            print(f"DEBUG: {mensaje}: '{valor}'")
+        else:
+            print(f"DEBUG: {mensaje}")
+
 def normalizar_numero(valor: str) -> str:
     """
     Normaliza un valor numérico extraído, conservando el formato original para mantener
@@ -59,6 +72,11 @@ def extraer_datos_poliza_vida_protgt(pdf_path: str) -> Dict:
     """
     Extrae datos de una póliza VIDA PROTGT desde un archivo PDF.
     """
+    # Activar modo debug para este proceso
+    os.environ["DEBUG"] = "1"
+    global DEBUG
+    DEBUG = True
+    
     logging.info(f"Procesando archivo VIDA PROTGT: {pdf_path}")
     resultado = {
         "Clave Agente": "0", "Coaseguro": "0", "Cobertura Básica": "0",
@@ -92,15 +110,15 @@ def extraer_datos_poliza_vida_protgt(pdf_path: str) -> Dict:
 
         # Patrones específicos para el formato VIDA PROTGT
         patrones = {
-            "Clave Agente": r'Agente:?\s+(\d+)|Agente:\s+(\d{6})',
-            "Nombre del agente": r'(?:Agente:?\s+\d+\s+)([A-ZÁ-Ú\s,.]+?)(?=\s+Promotor:|$)|(?:\d{6}\s+)([A-ZÁ-Ú\s,.]+?)(?=\s+Promotor:|$)',
-            "Nombre del asegurado titular": r'Datos del asegurado\s+Nombre:\s+([A-ZÁ-Ú\s,.]+?)(?=\s+Fecha|$)|Nombre:\s+([A-ZÁ-Ú\s,.]+?)(?=\s+Domicilio|$)',
-            "Nombre del contratante": r'Datos del contratante\s+Nombre:\s+([A-ZÁ-Ú\s,.]+?)(?=\s+Domicilio|$)|Nombre:\s+([A-ZÁ-Ú\s,.]+?)(?=\s+Fecha|$)',
-            "Domicilio del contratante": r'Domicilio:\s+(.*?)(?=\s+R\.F\.C\.:|$)|Domicilio:\s+(.*?)(?=\s+Teléfono:|$)',
-            "Código Postal": r'(?:C\.P\.|CP|[\d,]+,)\s*(\d{5})|(\d{5}),\s+\w+',
-            "Teléfono": r'Teléfono:\s+([0-9]{7,10})',
+            "Clave Agente": r'Agente:?\s*(\d+)|Agente:\s*(\d{6})|(?:^|\n)\s*Agente:\s*(\d+)',
+            "Nombre del agente": r'(?:Agente:?\s*\d+\s+)([A-ZÁ-Ú\s,.]+?)(?=\s+Promotor:|$)|(?:\d{6}\s+)([A-ZÁ-Ú\s,.]+?)(?=\s+Promotor:|$)|Agente:?\s*\d+\s+([A-ZÁ-Ú\s,.]+)|(?:^|\n)\s*Agente:?\s*\d+\s+([A-ZÁ-Ú\s,.]+)',
+            "Nombre del asegurado titular": r'(?:Datos del asegurado\s+Nombre:|Datos del asegurado\s*\n\s*Nombre:|Nombre:)\s*([A-ZÁ-Ú\s,.]+?)(?=\s+(?:Fecha|Domicilio|R\.F\.C\.|$))',
+            "Nombre del contratante": r'(?:Datos del contratante\s+Nombre:|Datos del contratante\s*\n\s*Nombre:|Nombre:)\s*([A-ZÁ-Ú\s,.]+?)(?=\s+(?:Domicilio|R\.F\.C\.|$))',
+            "Domicilio del contratante": r'Domicilio:?\s+(.*?)(?=\s+R\.F\.C\.:|$)|Domicilio:?\s+(.*?)(?=\s+Teléfono:|$)',
+            "Código Postal": r'(?:C\.P\.|CP|[\d,]+,)\s*(\d{5})|(\d{5}),\s+\w+|(?:Ciudad de(?:\s+México)?\s+|Alcaldía [^,]+,\s+)(\d{5})',
+            "Teléfono": r'Teléfono:?\s+([0-9]{7,10})',
             "R.F.C.": r'R\.F\.C\.:\s+([A-Z0-9]{10,13})',
-            "Fecha de emisión": r'Fecha de emisión\s+([0-9]{1,2}/[A-Z]{3}/[0-9]{4})',
+            "Fecha de emisión": r'Fecha de emisión\s+([0-9]{1,2}/[A-Z]{3}/[0-9]{4})|(?:^|\n)\s*Fecha de emisión\s+([0-9]{1,2}/[A-Z]{3}/[0-9]{4})',
             "Fecha de inicio de vigencia": r'(?:Fecha de inicio\s+de vigencia|Fecha de inicio|Inicio de Vigencia)\s+([0-9]{1,2}/[A-Z]{3}/[0-9]{4})',
             "Fecha de fin de vigencia": r'(?:Fecha de fin\s+de vigencia|Fecha de fin|Fin de Vigencia)\s+([0-9]{1,2}/[A-Z]{3}/[0-9]{4})',
             "Plazo de pago": r'Plazo de\s+pago\s+([0-9]+\s+(?:años|AÑOS))|Plazo de Pago:?\s+([0-9]+\s+(?:años|AÑOS))',
@@ -109,11 +127,11 @@ def extraer_datos_poliza_vida_protgt(pdf_path: str) -> Dict:
             "Frecuencia de pago": r'Forma de pago\s+([A-ZÁ-Ú]+)',  # Mismo patrón que Forma de pago
             "Nombre del plan": r'VIDA PROTGT',
             "Tipo de Plan": r'Tipo de Plan\s+([A-ZÁ-Ú\s]+)|VIDA PROTGT\s+([A-ZÁ-Ú\s]+)',
-            "Número de póliza": r'(?:Póliza|PÓLIZA)\s+([A-Z0-9]+H?)',
+            "Número de póliza": r'(?:Póliza|PÓLIZA)\s+([A-Z0-9]+H?)|(?:^|\n)\s*Póliza\s+([0-9]+H)',
             "Prima Neta": r'Prima anual\s+([\d,]+\.\d{2})|Prima\s+trimestral\s+([\d,]+\.\d{2})',
             "Prima anual total": r'Prima anual total\s+([\d,]+\.\d{2})',
             "Prima mensual": r'Prima\s+mensual\s+([\d,]+\.\d{2})|Según\s+Forma\s+de\s+Pago\s+([\d,]+\.\d{2})',
-            "Suma asegurada": r'Básica\s+\d+\s+AÑOS\s+([\d,]+\.\d{2})|Suma asegurada\s+([\d,]+\.\d{2})',
+            "Suma asegurada": r'Básica\s+\d+\s+(?:AÑOS|años)\s+([\d,]+\.\d{2})|Suma asegurada\s+([\d,]+\.\d{2})|(?:^|\n)\s*Básica\s+(?:\d+\s+)?(?:AÑOS|años)?\s+([\d,]+\.\d{2})',
             "Moneda": r'Moneda\s+([A-ZÁ-Ú]+)',
             "Centro de Utilidad": r'Centro de Utilidad:\s+(\d+)',
             "Cobertura Básica": r'Básica\s+(\d+\s+(?:años|AÑOS))\s+[\d,]+\.\d{2}|Básica\s+(\d+\s+(?:años|AÑOS))',
@@ -124,10 +142,27 @@ def extraer_datos_poliza_vida_protgt(pdf_path: str) -> Dict:
             "Prima trimestral total": r'Prima\s+trimestral\s+total\s+([\d,]+\.\d{2})'
         }
 
+        # Añadir patrones para tabla de coberturas
+        patrones_coberturas = {
+            "Coberturas": r'Coberturas\s+amparadas\s+Plazo de seguro\s+Suma asegurada\s+Extraprima\s+Prima anual',
+            "Cobertura Básica Extra": r'Básica\s+(\d+)\s+AÑOS\s+([\d,]+\.\d{2})\s+(\d+\.\d{2})\s+([\d,]+\.\d{2})',
+            "Gastos Funerarios": r'Gastos Funerarios\s+(\d+)\s+AÑOS\s+([\d,]+\.\d{2})\s+(\d+\.\d{2})\s+([\d,]+\.\d{2})'
+        }
+        
+        # Patrones para datos adicionales de la póliza (sección específica)
+        patrones_adicionales = {
+            "Clave Agente Adicional": r'(?:^|\n)\s*Agente:\s*(\d+)',
+            "Nombre Agente Adicional": r'(?:^|\n)\s*Agente:\s*\d+\s+([A-ZÁ-Ú\s,.]+)',
+            "Promotor": r'(?:^|\n)\s*Promotor:\s*(\d+)'
+        }
+
         # Extraer valores usando patrones específicos
         for campo, patron in patrones.items():
             match = re.search(patron, texto_completo, re.MULTILINE | re.IGNORECASE)
             if match:
+                debug_print(f"Encontrada coincidencia para {campo} con patrón {patron}")
+                debug_print(f"Grupos encontrados para {campo}", str(match.groups()))
+                
                 if campo == "Domicilio del contratante":
                     valor = match.group(1).strip() if match.group(1) else match.group(2).strip()
                     # Limpiar saltos de línea y espacios múltiples
@@ -137,14 +172,19 @@ def extraer_datos_poliza_vida_protgt(pdf_path: str) -> Dict:
                         valor = valor[:50]
                     resultado[campo] = valor
                     logging.info(f"Domicilio extraído: {valor}")
+                    debug_print("Domicilio extraído (procesado)", valor)
                 elif campo in ["Prima Neta", "Prima anual total", "Suma asegurada"]:
                     # Para valores numéricos, aplicamos la normalización
                     if match.groups():
                         valor = next((g for g in match.groups() if g), "").strip()
                         resultado[campo] = normalizar_numero(valor)
+                        debug_print(f"Valor numérico para {campo}", valor)
+                        debug_print(f"Valor normalizado para {campo}", resultado[campo])
                     else:
                         valor = match.group(1).strip()
                         resultado[campo] = normalizar_numero(valor)
+                        debug_print(f"Valor numérico para {campo}", valor)
+                        debug_print(f"Valor normalizado para {campo}", resultado[campo])
                     logging.info(f"Encontrado {campo}: {resultado[campo]}")
                 elif campo == "Clave Agente":
                     # La clave de agente puede estar en diferentes grupos
@@ -193,14 +233,83 @@ def extraer_datos_poliza_vida_protgt(pdf_path: str) -> Dict:
                     
                     if resultado[campo] != '0':
                         logging.info(f"Encontrado {campo}: {resultado[campo]}")
+        
+        # Buscar datos en la sección de "Datos adicionales"
+        datos_adicionales_match = re.search(r'Datos adicionales(.*?)(?=Endosos contenidos|$)', texto_completo, re.DOTALL)
+        if datos_adicionales_match:
+            seccion_datos_adicionales = datos_adicionales_match.group(1)
+            debug_print("Sección de datos adicionales encontrada", seccion_datos_adicionales)
+            
+            # Buscar el agente en esta sección específica
+            agente_match = re.search(r'Agente:?\s*(\d+)\s+([A-ZÁ-Ú\s,.]+)', seccion_datos_adicionales)
+            if agente_match:
+                resultado["Clave Agente"] = agente_match.group(1).strip()
+                resultado["Nombre del agente"] = agente_match.group(2).strip()
+                logging.info(f"Encontrado Clave Agente (en datos adicionales): {resultado['Clave Agente']}")
+                logging.info(f"Encontrado Nombre del agente (en datos adicionales): {resultado['Nombre del agente']}")
+            
+        # También buscar directamente la sección de "Datos adicionales" con un formato alternativo
+        if resultado["Clave Agente"] == "0" or resultado["Nombre del agente"] == "0":
+            # Buscar patrón como "Agente: 632563 ROSALIA VERA RYAN" directamente
+            agente_alt_match = re.search(r'(?:^|\n)\s*Agente:?\s*(\d{6})\s+([A-ZÁ-Ú\s,.]+?)(?=\s+Promotor|\s+$|\n)', texto_completo)
+            if agente_alt_match:
+                resultado["Clave Agente"] = agente_alt_match.group(1).strip()
+                resultado["Nombre del agente"] = agente_alt_match.group(2).strip()
+                logging.info(f"Encontrado Clave Agente (alt): {resultado['Clave Agente']}")
+                logging.info(f"Encontrado Nombre del agente (alt): {resultado['Nombre del agente']}")
+                
+        # Buscar fecha de emisión en secciones específicas si no se encontró
+        if resultado["Fecha de emisión"] == "0":
+            # Búsqueda más general
+            fecha_emision_alt_match = re.search(r'Fecha de emisión\s+([0-9]{1,2}/[A-Z]{3}/[0-9]{4})', texto_completo, re.IGNORECASE)
+            if fecha_emision_alt_match:
+                resultado["Fecha de emisión"] = fecha_emision_alt_match.group(1).strip()
+                logging.info(f"Encontrada Fecha de emisión (alt): {resultado['Fecha de emisión']}")
+            else:
+                # Si no se encuentra, revisar si la fecha es igual a la fecha de inicio de vigencia
+                if resultado["Fecha de inicio de vigencia"] != "0":
+                    resultado["Fecha de emisión"] = resultado["Fecha de inicio de vigencia"]
+                    logging.info(f"Usando Fecha de inicio como Fecha de emisión: {resultado['Fecha de emisión']}")
+        
+        # Buscar tabla de coberturas
+        coberturas_match = re.search(r'Coberturas(.*?)(?=\n\n|$)', texto_completo, re.DOTALL)
+        if coberturas_match:
+            seccion_coberturas = coberturas_match.group(1)
+            debug_print("Sección de coberturas encontrada", seccion_coberturas)
+            
+            # Buscar suma asegurada en coberturas básicas
+            suma_basica_match = re.search(r'Básica\s+\d+\s+AÑOS\s+([\d,]+\.\d{2})', seccion_coberturas)
+            if suma_basica_match and (resultado["Suma asegurada"] == "0" or float(resultado["Suma asegurada"]) < 10000):
+                nueva_suma = normalizar_numero(suma_basica_match.group(1))
+                logging.info(f"Encontrada suma asegurada en tabla de coberturas: {nueva_suma}")
+                resultado["Suma asegurada"] = nueva_suma
 
         # Post-procesamiento específico para VIDA PROTGT
 
-        # Si la Moneda es UDIS, asegurarnos de capturarla
-        if resultado["Moneda"] == "0" and "UDIS" in texto_completo:
-            resultado["Moneda"] = "UDIS"
-            logging.info("Asignado Moneda: UDIS (detectado en texto)")
-
+        # La Moneda puede estar en formato diferente en algunas pólizas
+        if resultado["Moneda"] == "0":
+            # Buscar en secciones específicas
+            moneda_match = re.search(r'Moneda\s+(UDIS|MN|DOLAR)', texto_completo, re.IGNORECASE)
+            if moneda_match:
+                resultado["Moneda"] = moneda_match.group(1).upper()
+                logging.info(f"Moneda encontrada (alt): {resultado['Moneda']}")
+        
+        # Buscar la forma de pago en su sección correcta
+        if resultado["Forma de pago"] == "0" or resultado["Forma de pago"].lower() == "masculino":
+            forma_pago_match = re.search(r'Forma de pago\s+(ANUAL|SEMESTRAL|TRIMESTRAL|MENSUAL|AGENTE)', texto_completo, re.IGNORECASE)
+            if forma_pago_match:
+                resultado["Forma de pago"] = forma_pago_match.group(1).upper()
+                # También actualizar frecuencia de pago para mantener consistencia
+                resultado["Frecuencia de pago"] = forma_pago_match.group(1).upper()
+                logging.info(f"Forma de pago encontrada (alt): {resultado['Forma de pago']}")
+            else:
+                # Buscar en una sección más específica
+                forma_pago_match = re.search(r'(?:^|\n)\s*Forma de pago\s+(.*?)(?=\n|$)', texto_completo)
+                if forma_pago_match:
+                    resultado["Forma de pago"] = forma_pago_match.group(1).strip()
+                    resultado["Frecuencia de pago"] = forma_pago_match.group(1).strip()
+                    logging.info(f"Forma de pago encontrada (línea): {resultado['Forma de pago']}")
+        
         # Usando el mismo domicilio para asegurado y contratante
         if resultado["Domicilio del asegurado"] == "0" and resultado["Domicilio del contratante"] != "0":
             resultado["Domicilio del asegurado"] = resultado["Domicilio del contratante"]
